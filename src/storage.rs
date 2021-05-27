@@ -31,6 +31,7 @@ pub struct StorageList<T> {
 static STORAGE_LIST_DEFAULT_LSIZE:usize = 10;
 
 impl<T> Drop for StorageList<T> {
+	// not thread safe, this should not be dropped in a multi-threaded context
     fn drop(&mut self) {
     	let mut cur_head = self.head.load(Ordering::SeqCst);
     	loop {
@@ -92,6 +93,18 @@ mod tests {
     	let sl =  StorageList::<i32>::new(Some(5));
     	unsafe {
     		assert!(sl.link_size.load(Ordering::SeqCst) == sl.head.load(Ordering::SeqCst).as_ref().unwrap().dlen);
+    	}
+    }
+
+    #[test]
+    fn insert_works() {
+    	let sl =  StorageList::<i32>::new(Some(5));
+    	assert!(sl.insert(Some(3)));
+    	unsafe {
+    		let inserted = sl.head.load(Ordering::SeqCst).as_ref().unwrap().data[0].clone();
+    		assert!(inserted.valid());
+    		assert!(inserted.count().unwrap() == 2);
+    		assert!(*inserted.get() == 3);
     	}
     }
 }
