@@ -3,18 +3,19 @@ use std::ptr;
 
 // Works to cache non-owning pointers via a wait-free stack
 struct CStack<T> {
-	dlen:i64,
-	data:Vec<AtomicPtr<T>>,
-	head:AtomicI64
+	pub dlen:i64,
+	pub data:Vec<AtomicPtr<T>>,
+	pub head:AtomicI64,
+	pub next:AtomicPtr<CStack<T>>
 }
 
 impl<T> CStack<T> {
-    fn new(size:i64) -> CStack<T> {
+    pub fn new(size:i64) -> CStack<T> {
         let mut ptrs = vec![];
         for _ in 0..size {
             ptrs.push(AtomicPtr::new(ptr::null_mut()));
         }
-        CStack{dlen:size, data:ptrs, head:AtomicI64::new(0)}
+        CStack{dlen:size, data:ptrs, head:AtomicI64::new(0), next:AtomicPtr::new(ptr::null_mut())}
     }
 
     fn push(&self, ptr:*mut T) -> bool { // to do replace with reason
@@ -22,7 +23,24 @@ impl<T> CStack<T> {
         if place < 0 {
             // conflict with a pop,
             return false;
-        } else if place >= self.dlen {
+        } else if place == self.dlen {
+        	// time for new node
+        	let new_stack = CStack::new(self.dlen);
+        	// This does not need to go through push() since this stack is still thread local
+        	let new_stack_place = new_stack.head.fetch_add(1, Ordering::SeqCst);
+        	new_stack.data[new_stack_place as usize].store(ptr, Ordering::SeqCst);
+        	let new_stack_ptr = Box::into_raw(Box::new(new_stack));
+        	match self.next.compare_exchange(ptr::null_mut(), new_stack_ptr, Ordering::SeqCst, Ordering::SeqCst) {
+        		Ok(_) => { return true; },
+        		Err(_) => {
+        			self.head.fetch_sub(1, Ordering::SeqCst);
+        			// todo monitoring and statistics
+        		    unsafe { drop(Box::from_raw(new_stack_ptr)); }
+        		    // todo recursive limited calls
+        			return false;
+        		}
+        	}
+        } else if place > self.dlen {
             self.head.fetch_sub(1, Ordering::SeqCst);
             return false;
         } else {
@@ -33,7 +51,7 @@ impl<T> CStack<T> {
         }
     }
     
-    fn pop(&self) -> Option<*mut T > {
+    fn pop(&self) -> Option<*mut T > { // todo reason 
         let place = self.head.fetch_sub(1, Ordering::SeqCst) - 1;
         if place < 0 {
             self.head.fetch_add(1, Ordering::SeqCst);
@@ -52,6 +70,18 @@ impl<T> CStack<T> {
             }
         }
     }
+}
+
+// This is constructed in forward fashion
+// stack size could change based on policy
+struct CStackLine<T> {
+	front:CStack<T>,
+}
+
+impl<T> CStackLine<T> {
+	fn new(size:i64) -> CStackLine<T> {
+		CStackLine{front:CStack::new(size)}
+	}
 }
 
 #[cfg(test)]
