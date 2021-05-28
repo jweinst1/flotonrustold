@@ -53,3 +53,25 @@ impl<T> CStack<T> {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cstack_new_length() {
+    	let c1 = CStack::<i32>::new(10);
+    	assert!(c1.data.len() == 10);
+    	assert!(c1.dlen == 10);
+    }
+
+    #[test]
+    fn cstack_base_push_pop() {
+    	let c1 = CStack::new(10);
+    	assert!(c1.push(Box::into_raw(Box::new(5))));
+    	match c1.pop() {
+    		Some(p) => unsafe { assert!(*p == 5); drop(Box::from_raw(p)); },
+    		None => { panic!("Expected a pointer to be popped!!"); }
+    	}
+    }
+}
