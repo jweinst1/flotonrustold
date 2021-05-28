@@ -107,4 +107,67 @@ mod tests {
     		assert!(*inserted.get() == 3);
     	}
     }
+
+    #[test]
+    fn insert_used_is_correct() {
+    	let sl =  StorageList::<i32>::new(Some(5));
+    	assert!(sl.insert(Some(3)));
+    	assert!(sl.insert(Some(3)));
+    	unsafe {
+    		assert!(sl.head.load(Ordering::SeqCst).as_ref().unwrap().used.load(Ordering::SeqCst) == 2);
+    	}
+    }
+
+    #[test]
+    fn insert_beyond_makes_new_link() {
+    	let sl = StorageList::<i32>::new(Some(3));
+    	assert!(sl.insert(Some(1)));
+    	assert!(sl.insert(Some(1)));
+    	assert!(sl.insert(Some(1)));
+    	unsafe {
+    		// any of the three inserts should all be ok
+    		let inserted1 = sl.head.load(Ordering::SeqCst).as_ref().unwrap().data[0].clone();
+    		let inserted2 = sl.head.load(Ordering::SeqCst).as_ref().unwrap().data[1].clone();
+    		let inserted3 = sl.head.load(Ordering::SeqCst).as_ref().unwrap().data[2].clone();
+
+    		assert!(inserted1.valid());
+    		assert!(inserted1.count().unwrap() == 2);
+    		assert!(*inserted1.get() == 1);
+
+    		assert!(inserted2.valid());
+    		assert!(inserted2.count().unwrap() == 2);
+    		assert!(*inserted2.get() == 1);
+
+    		assert!(inserted3.valid());
+    		assert!(inserted3.count().unwrap() == 2);
+    		assert!(*inserted3.get() == 1);
+    	}
+    	assert!(sl.insert(Some(4)));
+    	unsafe {
+    		let inserted4 = sl.head.load(Ordering::SeqCst).as_ref().unwrap().data[0].clone();
+    		assert!(inserted4.valid());
+    		assert!(inserted4.count().unwrap() == 2);
+    		assert!(*inserted4.get() == 4);
+
+    		match sl.head.load(Ordering::SeqCst).as_ref().unwrap().next.load(Ordering::SeqCst).as_ref() {
+    			Some(n) => {
+    				// make sure previous link is preserved
+    				let inserted_prev1 = n.data[0].clone();
+		    		assert!(inserted_prev1.valid());
+		    		assert!(inserted_prev1.count().unwrap() == 2);
+		    		assert!(*inserted_prev1.get() == 1);
+    			},
+    			None => { panic!("No valid pointer to next list elements!!"); }
+    		}
+    	}
+    }
+
+    #[test]
+    fn full_link_insert_returns_false() {
+    	let sl = StorageList::<i32>::new(Some(3));
+    	unsafe {
+    		sl.head.load(Ordering::SeqCst).as_ref().unwrap().used.store(4, Ordering::SeqCst);
+    	}
+    	assert!(!sl.insert(Some(5)));
+    }
 }
