@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicPtr, AtomicI64, Ordering};
 use std::ptr;
 
 // Works to cache non-owning pointers via a wait-free stack
-struct CStack<T> {
+pub struct CStack<T> {
 	pub dlen:i64,
 	pub data:Vec<AtomicPtr<T>>,
 	pub head:AtomicI64,
@@ -74,12 +74,28 @@ impl<T> CStack<T> {
 
 // This is constructed in forward fashion
 // stack size could change based on policy
-struct CStackLine<T> {
-	front:CStack<T>,
+pub struct CStackLine<T> {
+	pub front:CStack<T>,
+}
+
+impl<T> Drop for CStackLine<T> {
+	// not thread safe, this should not be dropped in a multi-threaded context
+    fn drop(&mut self) {
+    	// first cstack never needs to be manually dropped
+    	let mut cur_front = self.front.next.load(Ordering::SeqCst);
+    	loop {
+    		if cur_front == ptr::null_mut() {
+    			break;
+    		}
+    		let manage = unsafe{ Box::from_raw(cur_front) };
+    		cur_front = (*manage).next.load(Ordering::SeqCst);
+    		drop(manage);
+    	}
+    }
 }
 
 impl<T> CStackLine<T> {
-	fn new(size:i64) -> CStackLine<T> {
+	pub fn new(size:i64) -> CStackLine<T> {
 		CStackLine{front:CStack::new(size)}
 	}
 }

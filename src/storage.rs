@@ -68,7 +68,7 @@ impl<T> StorageList<T> {
 			let new_link = StorageLink::new(self.link_size.load(Ordering::SeqCst));
 			let new_ref = unsafe { new_link.as_ref().unwrap() };
 			let new_place = new_ref.used.fetch_add(1, Ordering::SeqCst);
-			new_ref.data[new_place].reset(value);
+			new_ref.data[new_place].reset(value, 1);
 			new_ref.next.store(cur_head, Ordering::SeqCst);
 			match self.head.compare_exchange(cur_head, new_link, Ordering::SeqCst, Ordering::SeqCst) {
 				Ok(_) => { return true; },
@@ -76,7 +76,7 @@ impl<T> StorageList<T> {
 				Err(p) => { panic!("Shouldn't get here! got pointer {:?}", p); }
 			}
 		} else {
-			cur_ref.data[place].reset(value);
+			cur_ref.data[place].reset(value, 1);
 			return true;
 		}
 

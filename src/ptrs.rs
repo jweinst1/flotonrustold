@@ -69,14 +69,18 @@ impl<T> SharedPtr<T> {
         self.ptr.load(Ordering::SeqCst) != ptr::null_mut()
     }
     
-    pub fn reset(&self, val: Option<T>) -> bool {
-        let current_access = self.access.load(Ordering::SeqCst);
-        if current_access == 0 {
-            match self.access.compare_exchange(current_access, i64::MIN, Ordering::SeqCst, Ordering::SeqCst) {
-                Ok(_) => (),
-                Err(_) => { return false; }
+    pub fn reset(&self, val: Option<T>, attempts:usize) -> bool {
+        let mut obtained = false;
+        for _ in 0..attempts {
+            match self.access.compare_exchange(0, i64::MIN, Ordering::SeqCst, Ordering::SeqCst) {
+                Ok(_) => {
+                    obtained = true;
+                    break;
+                 },
+                Err(_) => {}
             }
-        } else {
+        }
+        if !obtained {
             return false;
         }
         match val {
@@ -159,7 +163,7 @@ mod tests {
     #[test]
     fn reset_must_be_valid() {
         let p1 = SharedPtr::new(Some(7));
-        p1.reset(Some(6));
+        p1.reset(Some(6), 1);
         assert!(p1.valid());
         assert!(p1.count().unwrap() == 1);
     }
@@ -167,7 +171,7 @@ mod tests {
     #[test]
     fn reset_none_must_not_be_valid() {
         let p1 = SharedPtr::new(Some(7));
-        p1.reset(None);
+        p1.reset(None, 1);
         assert!(!p1.valid());
     }
 
@@ -175,7 +179,7 @@ mod tests {
     fn reset_must_not_affect_clones() {
         let p1 = SharedPtr::new(Some(7));
         let p2 = p1.clone();
-        p1.reset(Some(3));
+        p1.reset(Some(3), 1);
         assert!(p1.valid());
         assert!(p2.valid());
         assert!(p1.count().unwrap() == 1);
@@ -197,7 +201,7 @@ mod tests {
     fn reset_blocked_if_inprog_clones() {
         let p1 = SharedPtr::new(Some(6));
         p1.access.store(1, Ordering::SeqCst);
-        assert!(!p1.reset(Some(2)));
+        assert!(!p1.reset(Some(2), 1));
         assert!(p1.valid());
     }
 
@@ -205,7 +209,16 @@ mod tests {
     fn reset_blocked_if_inprog_reset() {
         let p1 = SharedPtr::new(Some(6));
         p1.access.store(-1, Ordering::SeqCst);
-        assert!(!p1.reset(Some(2)));
+        assert!(!p1.reset(Some(2), 1));
         assert!(p1.valid());      
+    }
+
+    #[test]
+    fn reset_multi_attempts_works_same() {
+        let p1 = SharedPtr::new(Some(20));
+        assert!(p1.reset(Some(7), 3));
+        assert!(p1.reset(Some(6), 2));
+        assert!(p1.reset(Some(2), 5));
+        assert!(p1.count().unwrap() == 1);
     }
 }
