@@ -9,15 +9,15 @@ impl<T> KVPair<T> {
 		KVPair(String::from(key), SharedPtr::new(Some(value)))
 	}
 
-	fn hash(&self) -> u64 {
-		let mut digest:u64 = 5381;
+	fn hash_32(&self) -> u32 {
+		let mut digest:u32 = 5381;
 		for c in self.0.as_bytes() {
-			digest = ((digest << 5) + digest) + *c as u64;
+			digest = ((digest << 5) + digest) + *c as u32;
 		}
 		return digest;
 	}
 }
-
+/*
 pub struct KVSlice<T> {
 	items:Vec<SharedPtr<KVPair<T>>>,
 	occupied:AtomicU32,
@@ -58,4 +58,4 @@ mod tests {
     #[test]
     fn foo() {
     }
-}
+}*/
