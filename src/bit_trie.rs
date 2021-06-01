@@ -72,9 +72,9 @@ impl<T> BitTrie<T> {
 		BitTrie{base:AtomicPtr::new(Box::into_raw(Box::new(BitNode::new())))}
 	}
 
-	pub fn find_u32(&self, key:u32) -> Option<& T> {
+	pub fn find(&self, key:u64, key_size:usize) -> Option<& T> {
 		let mut cur_ptr = self.base.load(Ordering::SeqCst);
-		for i in 0..32 {
+		for i in 0..key_size {
 			unsafe {
 				match cur_ptr.as_ref() {
 					Some(r) => {
@@ -102,9 +102,9 @@ impl<T> BitTrie<T> {
 	    }		
 	}
 
-	pub fn insert_32(&self, key:u32, val:T) -> &T {
+	pub fn insert(&self, key:u64, key_size:usize, val:T) -> &T {
 		let mut cur_ptr = self.base.load(Ordering::SeqCst);
-		for i in 0..32 {
+		for i in 0..key_size {
 			unsafe {
 				match cur_ptr.as_ref() {
 					Some(r) => {
@@ -153,15 +153,36 @@ mod tests {
     #[test]
     fn insert_32_works() {
     	let t1 = BitTrie::<i32>::new();
-    	let got = t1.insert_32(5381, 2000);
+    	let got = t1.insert(5381, 32, 2000);
     	assert!(*got == 2000);
+    }
+
+    #[test]
+    fn insert_64_works() {
+    	let t1 = BitTrie::<i32>::new();
+    	let got = t1.insert(5381, 64, 2000);
+    	assert!(*got == 2000);
+    }
+
+    #[test]
+    fn find_64_works() {
+    	let t1 = BitTrie::<i32>::new();
+    	t1.insert(5381, 64, 2000);
+    	match t1.find(5381, 64) {
+    		Some(found) => {
+    			assert!(*found == 2000);
+    		},
+    		None => {
+    			panic!("Expected just inserted value to be found in trie!");
+    		}
+    	}
     }
 
     #[test]
     fn find_32_works() {
     	let t1 = BitTrie::<i32>::new();
-    	let got = t1.insert_32(5381, 2000);
-    	match t1.find_u32(5381) {
+    	t1.insert(5381, 32, 2000);
+    	match t1.find(5381, 32) {
     		Some(p) => {
     			assert!(*p == 2000);
     		},
@@ -174,8 +195,8 @@ mod tests {
     #[test]
     fn double_insert_fails() {
     	let t1 = BitTrie::<i32>::new();
-    	let got1 = t1.insert_32(5381, 2000);
-    	let got2 = t1.insert_32(5381, 3000);
+    	t1.insert(5381, 32, 2000);
+    	let got2 = t1.insert(5381, 32, 3000);
     	// no over writes allowed
     	assert!(*got2 == 2000);
     }
@@ -200,8 +221,8 @@ mod tests {
     		let a3 = a1.clone();
     		let t1 = BitTrie::<Arc<i32>>::new();
     		assert!(Arc::strong_count(&a2) == 3);
-    		t1.insert_32(8899, a2);
-    		t1.insert_32(8894, a3);
+    		t1.insert(8899, 16, a2);
+    		t1.insert(8894, 16, a3);
     	}
     	assert!(Arc::strong_count(&a1) == 1);
     }
