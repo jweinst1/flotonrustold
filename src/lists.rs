@@ -2,10 +2,12 @@ use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use std::ptr;
 use crate::ptrs::SharedPtr;
 use crate::bit_trie::BitTrie;
-
-pub struct KVPair<T>(String, SharedPtr<T>);
-
-
+/*
+#[derive(Debug)]
+struct List<T> {
+	items:BitTrie<SharedPtr<T>>,
+	len:AtomicUsize
+}*/
 
 /*
 #[cfg(test)]

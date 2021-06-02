@@ -72,9 +72,9 @@ impl<T> BitTrie<T> {
 		BitTrie{base:AtomicPtr::new(Box::into_raw(Box::new(BitNode::new())))}
 	}
 
-	pub fn find(&self, key:u64, key_size:usize) -> Option<& T> {
+	fn find_node(&self, key:u64, key_size:usize) -> *mut BitNode<T> {
 		let mut cur_ptr = self.base.load(Ordering::SeqCst);
-		for i in 0..key_size {
+		for i in (0..key_size).rev() {
 			unsafe {
 				match cur_ptr.as_ref() {
 					Some(r) => {
@@ -82,13 +82,17 @@ impl<T> BitTrie<T> {
 					},
 					None => { 
 						// not found
-						return None;
+						return ptr::null_mut();
 					}
 				}
 			}
 		}
+		return cur_ptr;
+	}
+
+	pub fn find(&self, key:u64, key_size:usize) -> Option<& T> {
 		unsafe {
-			match cur_ptr.as_ref() {
+			match self.find_node(key, key_size).as_ref() {
 				Some(r) => {
 					let got_ptr = r.value.load(Ordering::SeqCst);
                     if got_ptr != ptr::null_mut() {
@@ -102,9 +106,37 @@ impl<T> BitTrie<T> {
 	    }		
 	}
 
+	pub fn swap(&self, key:u64, key_size:usize, val:Option<T>) -> Option<&T> {
+		unsafe {
+			match self.find_node(key, key_size).as_ref() {
+				Some(r) => {
+					match val {
+						Some(sval) => {
+							let got_ptr = r.value.load(Ordering::SeqCst);
+							let incoming_ptr = Box::into_raw(Box::new(sval));
+                            match r.value.compare_exchange(got_ptr, incoming_ptr, Ordering::SeqCst, Ordering::SeqCst) {
+                            	Ok(_) => { return Some(got_ptr.as_ref().unwrap()); },
+                            	Err(_) => { return None; }
+                            }
+						},
+						None => {
+							let got_ptr = r.value.load(Ordering::SeqCst);
+							match r.value.compare_exchange(got_ptr, ptr::null_mut(), Ordering::SeqCst, Ordering::SeqCst) {
+								Ok(_) => { return Some(got_ptr.as_ref().unwrap()); },
+								Err(_) => { return None; }
+							}
+						}
+					}
+                    
+				},
+				None => { return None; }
+			}
+	    }	
+	}
+
 	pub fn insert(&self, key:u64, key_size:usize, val:T) -> &T {
 		let mut cur_ptr = self.base.load(Ordering::SeqCst);
-		for i in 0..key_size {
+		for i in (0..key_size).rev() {
 			unsafe {
 				match cur_ptr.as_ref() {
 					Some(r) => {
@@ -225,6 +257,36 @@ mod tests {
     		t1.insert(8894, 16, a3);
     	}
     	assert!(Arc::strong_count(&a1) == 1);
+    }
+
+    #[test]
+    fn trie_swap_to_null_works() {
+    	let t1 = BitTrie::<i32>::new();
+    	let got = t1.insert(5381, 32, 2500);
+    	assert!(*got == 2500);
+    	match t1.swap(5381, 32, None) {
+    		Some(swapped) => { assert!(*swapped == 2500); },
+    		None => { panic!("Expected to swap out {:?}, got None", 2500);}
+    	}
+    	match t1.find(5381, 32) {
+    		Some(unexpected) => { panic!("Expected find as None, got {:?}", unexpected); },
+    		None => ()
+    	}
+    }
+
+    #[test]
+    fn trie_swap_to_value_works() {
+    	let t1 = BitTrie::<i32>::new();
+    	let got = t1.insert(5381, 32, 2500);
+    	assert!(*got == 2500);
+    	match t1.swap(5381, 32, Some(300)) {
+    		Some(swapped) => { assert!(*swapped == 2500); },
+    		None => { panic!("Expected to swap out {:?}, got None", 2500);}
+    	}
+    	match t1.find(5381, 32) {
+    		Some(found) => { assert!(*found == 300); },
+    		None => {panic!("Expected {:?}, after swap, got None", 300);}
+    	}
     }
 }
 
