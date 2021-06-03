@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicPtr, AtomicI64, Ordering};
 use std::ptr;
+use crate::bit_trie::BitTrie;
 
 // Works to cache non-owning pointers via a wait-free stack
 pub struct CStack<T> {
