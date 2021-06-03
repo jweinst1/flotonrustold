@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicPtr, AtomicI64, AtomicUsize, Ordering};
 //use std::thread;
 use std::ptr;
 
+#[derive(Debug)]
 pub struct SharedPtr<T> {
     pub ptr:AtomicPtr<T>,
     pub counter:AtomicPtr<AtomicUsize>,

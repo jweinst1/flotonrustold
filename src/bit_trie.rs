@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicPtr, Ordering};
 use std::ptr;
 
 struct BitNode<T> {
