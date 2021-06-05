@@ -22,8 +22,12 @@ impl<T> BitNode<T> {
 	}
 
 	fn create_child(&self, idx:usize) -> *mut BitNode<T> {
+		let seen_ptr = self.children[idx].load(Ordering::SeqCst);
+		if seen_ptr != ptr::null_mut() {
+			return seen_ptr;
+		}
 		let input_child = Box::into_raw(Box::new(BitNode::new()));
-		match self.children[idx].compare_exchange(ptr::null_mut(), input_child, Ordering::SeqCst, Ordering::SeqCst) {
+		match self.children[idx].compare_exchange(seen_ptr, input_child, Ordering::SeqCst, Ordering::SeqCst) {
 			Ok(_) => self.children[idx].load(Ordering::SeqCst),
 			Err(_) => {
 				unsafe { drop(Box::from_raw(input_child)); }
@@ -90,6 +94,22 @@ impl<T> BitTrie<T> {
 		return cur_ptr;
 	}
 
+	fn carve_node(&self, key:u64, key_size:usize) -> *mut BitNode<T> {
+		let mut cur_ptr = self.base.load(Ordering::SeqCst);
+		for i in (0..key_size).rev() {
+			unsafe {
+				match cur_ptr.as_ref() {
+					Some(r) => {
+						cur_ptr = r.create_child(((key >> i) & 1) as usize);
+					},
+					// create child always returns a valid pointer, if not, something is VERY wrong
+					None => { panic!("Expected child bit trie node, got nullptr!"); }
+				}
+			}
+		}
+		return cur_ptr;
+	}
+
 	pub fn find(&self, key:u64, key_size:usize) -> Option<& T> {
 		unsafe {
 			match self.find_node(key, key_size).as_ref() {
@@ -106,23 +126,24 @@ impl<T> BitTrie<T> {
 	    }		
 	}
 
-	pub fn swap(&self, key:u64, key_size:usize, val:Option<T>) -> Option<&T> {
+	pub fn swap(&self, key:u64, key_size:usize, val:Option<T>, carve:bool) -> Option<&T> {
+		let node_used = if carve { self.carve_node(key, key_size) } else { self.find_node(key, key_size) };
 		unsafe {
-			match self.find_node(key, key_size).as_ref() {
+			match node_used.as_ref() {
 				Some(r) => {
 					match val {
 						Some(sval) => {
 							let got_ptr = r.value.load(Ordering::SeqCst);
 							let incoming_ptr = Box::into_raw(Box::new(sval));
                             match r.value.compare_exchange(got_ptr, incoming_ptr, Ordering::SeqCst, Ordering::SeqCst) {
-                            	Ok(_) => { return Some(got_ptr.as_ref().unwrap()); },
+                            	Ok(_) => { return got_ptr.as_ref(); },
                             	Err(_) => { return None; }
                             }
 						},
 						None => {
 							let got_ptr = r.value.load(Ordering::SeqCst);
 							match r.value.compare_exchange(got_ptr, ptr::null_mut(), Ordering::SeqCst, Ordering::SeqCst) {
-								Ok(_) => { return Some(got_ptr.as_ref().unwrap()); },
+								Ok(_) => { return got_ptr.as_ref(); },
 								Err(_) => { return None; }
 							}
 						}
@@ -135,20 +156,8 @@ impl<T> BitTrie<T> {
 	}
 
 	pub fn insert(&self, key:u64, key_size:usize, val:T) -> &T {
-		let mut cur_ptr = self.base.load(Ordering::SeqCst);
-		for i in (0..key_size).rev() {
-			unsafe {
-				match cur_ptr.as_ref() {
-					Some(r) => {
-						cur_ptr = r.create_child(((key >> i) & 1) as usize);
-					},
-					// create child always returns a valid pointer, if not, something is VERY wrong
-					None => { panic!("Expected child bit trie node, got nullptr!"); }
-				}
-			}
-		}
 		unsafe {
-			match cur_ptr.as_ref() {
+			match self.carve_node(key, key_size).as_ref() {
 				Some(r) => {
 					let incoming_ptr = Box::into_raw(Box::new(val));
 					match r.value.compare_exchange(ptr::null_mut(), incoming_ptr, Ordering::SeqCst, Ordering::SeqCst) {
@@ -159,7 +168,41 @@ impl<T> BitTrie<T> {
 						}
 					}
 				},
-				None => { panic!("Expected pointer at end of 32bit trie insert!"); }
+				None => { panic!("Expected pointer at end of trie carve!"); }
+			}
+	    }
+	}
+	// puts a value only if the slot is null
+	pub fn switch(&self, key:u64, key_size:usize, val:*mut T) -> bool {
+		unsafe {
+			match self.carve_node(key, key_size).as_ref() {
+				Some(r) => {
+					match r.value.compare_exchange(ptr::null_mut(), val, Ordering::SeqCst, Ordering::SeqCst) {
+						Ok(_) => { return true; },
+						Err(_) => {
+							return false;
+						}
+					}
+				},
+				None => { panic!("Expected pointer at end of trie carve!"); }
+			}
+	    }
+	}
+
+	// Gets a value only if it's already not nullptr, sets to null
+	pub fn flip(&self, key:u64, key_size:usize) -> Option<*mut T> {
+		unsafe {
+			match self.find_node(key, key_size).as_ref() {
+				Some(r) => {
+					let read_ptr = r.value.load(Ordering::SeqCst);
+					match r.value.compare_exchange(read_ptr, ptr::null_mut(), Ordering::SeqCst, Ordering::SeqCst) {
+						Ok(_) => { return Some(read_ptr); },
+						Err(_) => {
+							return None;
+						}
+					}
+				},
+				None => { return None; }
 			}
 	    }
 	}
@@ -170,6 +213,7 @@ impl<T> BitTrie<T> {
 mod tests {
     use super::*;
     use std::sync::Arc;
+    use std::sync::atomic::AtomicPtr;
 
     #[test]
     fn create_get_child_works() {
@@ -264,7 +308,7 @@ mod tests {
     	let t1 = BitTrie::<i32>::new();
     	let got = t1.insert(5381, 32, 2500);
     	assert!(*got == 2500);
-    	match t1.swap(5381, 32, None) {
+    	match t1.swap(5381, 32, None, false) {
     		Some(swapped) => { assert!(*swapped == 2500); },
     		None => { panic!("Expected to swap out {:?}, got None", 2500);}
     	}
@@ -279,13 +323,75 @@ mod tests {
     	let t1 = BitTrie::<i32>::new();
     	let got = t1.insert(5381, 32, 2500);
     	assert!(*got == 2500);
-    	match t1.swap(5381, 32, Some(300)) {
+    	match t1.swap(5381, 32, Some(300), false) {
     		Some(swapped) => { assert!(*swapped == 2500); },
     		None => { panic!("Expected to swap out {:?}, got None", 2500);}
     	}
     	match t1.find(5381, 32) {
     		Some(found) => { assert!(*found == 300); },
     		None => {panic!("Expected {:?}, after swap, got None", 300);}
+    	}
+    }
+    #[derive(Debug)]
+    struct PtrHolder<T>(AtomicPtr<T>);
+
+    #[test]
+    fn swap_in_and_out_obj() {
+    	let holder = PtrHolder(AtomicPtr::new(Box::into_raw(Box::new(15))));
+    	let tree = BitTrie::<PtrHolder<i32>>::new();
+    	match tree.swap(7788, 16, Some(holder), true) {
+    		Some(unexpected) => {panic!("Expected to swap out None, got {:?}", unexpected); },
+    		None => ()
+    	}
+
+    	match tree.swap(7788, 16, None, false) {
+    		Some(swapped) => {
+    			unsafe {
+	    			match swapped.0.load(Ordering::SeqCst).as_ref() {
+	    				Some(r) => {
+	    					assert!(*r == 15);
+	    				},
+	    				None => { panic!("Expected to load valid reference from {:?}", swapped); }
+	    			}
+	    			drop(Box::from_raw(swapped.0.load(Ordering::SeqCst)));
+    		    }
+    		},
+    		None => { panic!("Expected to swap out a PtrHolder, but got None"); }
+    	}
+    }
+
+    #[test]
+    fn switch_works() {
+    	let holder = Box::into_raw(Box::new(PtrHolder(AtomicPtr::new(ptr::null_mut()))));
+    	let tree = BitTrie::<PtrHolder<i32>>::new();
+    	assert!(tree.switch(5443, 16, holder));
+    	match tree.swap(5443, 16, None, false) {
+    		Some(_) => {
+    			let holding = Box::into_raw(Box::new(PtrHolder(AtomicPtr::new(ptr::null_mut()))));
+    			// same slot should be null now
+    			assert!(tree.switch(5443, 16, holding));
+    		},
+    		None => { panic!("Expected to swap out a PtrHolder, but got None"); }
+    	}
+    }
+
+    #[test]
+    fn flip_works() {
+    	let holder = Box::into_raw(Box::new(PtrHolder(AtomicPtr::new(ptr::null_mut()))));
+    	let tree = BitTrie::<PtrHolder<i32>>::new();
+    	assert!(tree.switch(5443, 16, holder));
+    	match tree.flip(5443, 16) {
+    		Some(p) => {
+    			unsafe {
+	    			match p.as_ref() {
+	    				Some(r) => {
+	    					assert!(r.0.load(Ordering::SeqCst) == ptr::null_mut());
+	    				},
+	    				None => { panic!("Got null ptr from flip()!"); }
+	    			} 
+    			}
+    		},
+    		None => { panic!("Expected to flip out a ptr, but got None"); }
     	}
     }
 }

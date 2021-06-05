@@ -4,7 +4,7 @@ use crate::ptrs::SharedPtr;
 use crate::bit_trie::BitTrie;
 
 
-struct List<T> {
+pub struct List<T> {
 	key_size:usize,
 	items:BitTrie<SharedPtr<T>>,
 	len:AtomicI64
@@ -23,6 +23,8 @@ impl<T> List<T> {
 		for i in 0..attempts {
 			let cur_len = self.len.fetch_add(1, Ordering::SeqCst);
 			if cur_len < 0 {
+				// This means a call to pop() is currently in progress, 
+				// but will increment the len count back up to 0
 				continue;
 			}
 			let slot = self.items.insert(cur_len as u64, self.key_size, SharedPtr::new(None));
