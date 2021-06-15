@@ -10,6 +10,7 @@ impl<T> SharedCount<T> {
 }
 
 #[repr(u8)]
+#[derive(PartialEq)]
 enum AccessState {
 	RrCc = 0b00110000,
 	RcRc = 0b01010000,
@@ -24,6 +25,16 @@ impl AccessState {
 			0b01010000 => AccessState::RcRc,
 			0b11000000 => AccessState::CcRr,
 			0b10100000 => AccessState::CrCr,
+			_ => panic!("Unhandled access state {:?}", value)
+		}
+	}
+
+	fn next_u8(value:u8) -> AccessState {
+		match value & 0b11110000 {
+			0b00110000 => AccessState::RcRc,
+			0b01010000 => AccessState::CcRr,
+			0b11000000 => AccessState::CrCr,
+			0b10100000 => AccessState::RrCc,
 			_ => panic!("Unhandled access state {:?}", value)
 		}
 	}
@@ -86,5 +97,13 @@ mod tests {
     	let control = AccessControl::new();
     	control.ungate(0);
     	assert!(control.value() == 0b00110001);
+    }
+
+    #[test]
+    fn next_u8_works() {
+    	assert!(AccessState::next_u8(AccessState::RrCc as u8) == AccessState::RcRc);
+    	assert!(AccessState::next_u8(AccessState::RcRc as u8) == AccessState::CcRr);
+    	assert!(AccessState::next_u8(AccessState::CcRr as u8) == AccessState::CrCr);
+    	assert!(AccessState::next_u8(AccessState::CrCr as u8) == AccessState::RrCc);
     }
 }
