@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU8, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU32, AtomicU64, Ordering};
 use std::{thread, time, ptr};
 
 struct SharedCount<T>(*mut T, AtomicUsize);
@@ -9,72 +9,44 @@ impl<T> SharedCount<T> {
     }
 }
 
-#[repr(u8)]
+
 #[derive(PartialEq)]
+#[derive(Debug)]
 enum AccessState {
-	RrCc = 0b00110000,
-	RcRc = 0b01010000,
-	CcRr = 0b11000000,
-	CrCr = 0b10100000
+	RrCc = 0,
+	RcRc = 1,
+	CcRr = 2,
+	CrCr = 3
 }
 
 impl AccessState {
-	fn from_u8(value:u8) -> AccessState {
-		match value & 0b11110000 {
-			0b00110000 => AccessState::RrCc,
-			0b01010000 => AccessState::RcRc,
-			0b11000000 => AccessState::CcRr,
-			0b10100000 => AccessState::CrCr,
+	fn from_u64(value:u64) -> AccessState {
+		match value >> 62 {
+			0 => AccessState::RrCc,
+			1 => AccessState::RcRc,
+			2 => AccessState::CcRr,
+			3 => AccessState::CrCr,
 			_ => panic!("Unhandled access state {:?}", value)
 		}
 	}
 
-	fn next_u8(value:u8) -> AccessState {
-		match value & 0b11110000 {
-			0b00110000 => AccessState::RcRc,
-			0b01010000 => AccessState::CcRr,
-			0b11000000 => AccessState::CrCr,
-			0b10100000 => AccessState::RrCc,
-			_ => panic!("Unhandled access state {:?}", value)
-		}
+	fn eq_u64(lfs:u64, rfs:u64) -> bool {
+		// todo, make inline ?
+		AccessState::from_u64(lfs) == AccessState::from_u64(rfs)
 	}
 }
 
-struct AccessControl(AtomicU8);
-
-impl AccessControl {
-	fn new() -> AccessControl {
-		AccessControl(AtomicU8::new(AccessState::RrCc as u8))
-	}
-
-	fn ungate(&self, pos:usize) {
-		self.0.fetch_or(1 << pos, Ordering::SeqCst);
-	}
-
-	fn value(&self) -> u8 {
-		self.0.load(Ordering::SeqCst)
-	}
-
-	fn state(&self) -> AccessState {
-		AccessState::from_u8(self.0.load(Ordering::SeqCst))
-	}
-
-	fn is_fully_open(&self) -> bool {
-		(self.0.load(Ordering::SeqCst) & 0b1111) == 0b1111
-	}
-}
-
-struct AccessCounted<T>(AtomicPtr<SharedCount<T>>, AtomicUsize, AtomicUsize);
+struct AccessCounted<T>(AtomicPtr<SharedCount<T>>, AtomicU32, AtomicU32);
 
 impl<T> AccessCounted<T> {
 	fn new() -> AccessCounted<T> {
-		AccessCounted(AtomicPtr::new(ptr::null_mut()), AtomicUsize::new(0), AtomicUsize::new(0))
+		AccessCounted(AtomicPtr::new(ptr::null_mut()), AtomicU32::new(0), AtomicU32::new(0))
 	}
 }
 
 pub struct Shared<T> {
 	bins:[AccessCounted<T>; 4],
-	ctrl:AccessControl
+	//ctrl:AccessControl
 }
 
 impl<T> Shared<T> {
@@ -82,8 +54,8 @@ impl<T> Shared<T> {
 		Shared{bins:[AccessCounted::new(),
 			         AccessCounted::new(),
 			         AccessCounted::new(),
-			         AccessCounted::new()],
-			    ctrl:AccessControl::new()
+			         AccessCounted::new()]
+			    //ctrl:AccessControl::new()
 			     }
 	}
 }
@@ -93,17 +65,18 @@ mod tests {
     use super::*;
 
     #[test]
-    fn ungate_works() {
-    	let control = AccessControl::new();
-    	control.ungate(0);
-    	assert!(control.value() == 0b00110001);
+    fn from_u64_works() {
+    	let cnt:u64 = (2 << 62) + 3;
+    	let state = AccessState::from_u64(cnt);
+    	assert_eq!(state, AccessState::CcRr);
     }
 
     #[test]
-    fn next_u8_works() {
-    	assert!(AccessState::next_u8(AccessState::RrCc as u8) == AccessState::RcRc);
-    	assert!(AccessState::next_u8(AccessState::RcRc as u8) == AccessState::CcRr);
-    	assert!(AccessState::next_u8(AccessState::CcRr as u8) == AccessState::CrCr);
-    	assert!(AccessState::next_u8(AccessState::CrCr as u8) == AccessState::RrCc);
+    fn eq_u64_works() {
+    	let cnt1:u64 = (2 << 62) + 3;
+    	let cnt2:u64 = (2 << 62) + 56;
+    	let cnt3:u64 = (1 << 62) + 3;
+    	assert!(AccessState::eq_u64(cnt1, cnt2));
+    	assert!(!AccessState::eq_u64(cnt2, cnt3));
     }
 }
