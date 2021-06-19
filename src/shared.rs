@@ -64,7 +64,7 @@ impl AccessCounter {
 			2 => AccessState::CcRr,
 			3 => AccessState::CrCr
 		};
-		return AccessStateCount(state, value >> 2)
+		AccessStateCount(state, value >> 2)
 	}
 
 	// Always adds in increment of 0b100, to never touch 2bit flag
@@ -84,7 +84,33 @@ impl AccessCounter {
 	fn dec(&self) -> u64 {
 		self.0.fetch_sub(0b100, Ordering::SeqCst)
 	}
-	// todo - swap to next
+
+	fn dec_and_get_state(&self) -> AccessState {
+		match self.0.fetch_sub(0b100, Ordering::SeqCst) & 0b11 {
+			0 => AccessState::RrCc,
+			1 => AccessState::RcRc,
+			2 => AccessState::CcRr,
+			3 => AccessState::CrCr
+		}
+	}
+	// This must be called by a single thread at a time
+	fn swap_to_next_state(&self) -> AccessStateCount {
+		let swapped_out = match self.state() {
+			AccessState::RrCc => {
+				self.0.swap(AccessState::RcRc as u64, Ordering::SeqCst)
+			},
+			AccessState::RcRc => {
+				self.0.swap(AccessState::CcRr as u64, Ordering::SeqCst)
+			},
+			AccessState::CcRr => {
+				self.0.swap(AccessState::CrCr as u64, Ordering::SeqCst)
+			},
+			AccessState::CrCr => {
+				self.0.swap(AccessState::RrCc as u64, Ordering::SeqCst)
+			}
+		};
+		AccessStateCount(swapped_out & 0b11, swapped_out >> 2)
+	}
 }
 
 struct CountedPtr<T>(AtomicPtr<SharedCount<T>>, AtomicU32, AtomicU32);
@@ -158,6 +184,10 @@ impl<T> Shared<T> {
 			     }	
 	}
 
+	pub fn reset(&self, val:T) {
+		// todo
+	}
+
 	pub fn clone(&self) -> Shared<T> {
 		let state = self.new_cnt.inc_and_get_state();
 		let mut cloned = ptr::null_mut();
@@ -191,12 +221,14 @@ impl<T> Shared<T> {
 				}
 			}
 		}
-		if !AccessState::eq_u64(self.new_cnt.load(Ordering::SeqCst), state) {
-			// the state has changed, decrement counter from previous generation
-			self.old_cnt.fetch_sub(1, Ordering::SeqCst);
-		} else {
-			self.new_cnt.fetch_sub(1, Ordering::SeqCst);
+		let state2 = self.new_cnt.dec_and_get_state();
+		if state != state2 {
+			// new to correct the count
+			self.new_cnt.inc();
+			// This attendance count belongs to the old generation
+			self.old_cnt.dec();
 		}
+
 		return Shared::new_ptr(cloned);
 	}
 }
