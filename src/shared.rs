@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicPtr, AtomicBool, AtomicUsize, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU32, AtomicU64, Ordering};
 use std::{thread, time, ptr};
 
 struct SharedCount<T>(*mut T, AtomicUsize);
@@ -34,36 +34,56 @@ enum AccessState {
 	CrCr = 3
 }
 
-impl AccessState {
-	fn from_u64(value:u64) -> AccessState {
-		match value >> 62 {
+struct AccessStateCount(AccessState, u64);
+
+struct AccessCounter(AtomicU64);
+
+impl AccessCounter {
+	fn new(state:AccessState) -> AccessCounter {
+		AccessCounter(AtomicU64::new(state as u64))
+	}
+
+	fn count(&self) -> u64 {
+		self.0.load(Ordering::SeqCst) >> 2
+	}
+
+	fn state(&self) -> AccessState {
+		match self.0.load(Ordering::SeqCst) & 0b11 {
 			0 => AccessState::RrCc,
 			1 => AccessState::RcRc,
 			2 => AccessState::CcRr,
-			3 => AccessState::CrCr,
-			_ => panic!("Unhandled access state {:?}", value)
+			3 => AccessState::CrCr
 		}
 	}
 
-	fn initial() -> u64 {
-		AccessState::RrCc as u64
+	fn state_and_count(&self) -> AccessStateCount {
+		let value = self.0.load(Ordering:SeqCst);
+		let state = match value & 0b11 {
+			0 => AccessState::RrCc,
+			1 => AccessState::RcRc,
+			2 => AccessState::CcRr,
+			3 => AccessState::CrCr
+		};
+		return AccessStateCount(state, value >> 2)
 	}
 
-	fn eq_u64(lfs:u64, rfs:u64) -> bool {
-		// todo, make inline ?
-		AccessState::from_u64(lfs) == AccessState::from_u64(rfs)
+	// Always adds in increment of 0b100, to never touch 2bit flag
+	fn inc(&self) -> u64 {
+		self.0.fetch_add(0b100, Ordering::SeqCst)
+	}
+	// Always subs in decrement of 0b100, to never touch 2bit flag
+	fn dec(&self) -> u64 {
+		self.0.fetch_sub(0b100, Ordering::SeqCst)
 	}
 
-	fn count_u64(value:u64) -> u64 {
-		value & !(3 << 62)
-	}
+	// todo - swap to next
 }
 
-struct AccessCounted<T>(AtomicPtr<SharedCount<T>>, AtomicU32, AtomicU32);
+struct CountedPtr<T>(AtomicPtr<SharedCount<T>>, AtomicU32, AtomicU32);
 
-impl<T> AccessCounted<T> {
-	fn new(ptr:*mut SharedCount<T>) -> AccessCounted<T> {
-		AccessCounted(AtomicPtr::new(ptr), AtomicU32::new(0), AtomicU32::new(0))
+impl<T> CountedPtr<T> {
+	fn new(ptr:*mut SharedCount<T>) -> CountedPtr<T> {
+		CountedPtr(AtomicPtr::new(ptr), AtomicU32::new(0), AtomicU32::new(0))
 	}
 
 	fn duplicate(&self) -> *mut SharedCount<T> {
@@ -104,34 +124,57 @@ impl<T> AccessCounted<T> {
 }
 
 pub struct Shared<T> {
-	bins:[AccessCounted<T>; 4],
-	new_cnt:AtomicU64,
-	old_cnt:AtomicU64
+	bins:[CountedPtr<T>; 4],
+	new_cnt:AccessCounter,
+	old_cnt:AccessCounter
 }
 
 impl<T> Shared<T> {
 	pub fn new() -> Shared<T> {
-		Shared{bins:[AccessCounted::new(ptr::null_mut()),
-			         AccessCounted::new(ptr::null_mut()),
-			         AccessCounted::new(ptr::null_mut()),
-			         AccessCounted::new(ptr::null_mut())], // 4th slot is initial
-			  new_cnt:AtomicU64::new(AccessState::initial()),
-			  old_cnt:AtomicU64::new(0)
+		Shared{bins:[CountedPtr::new(ptr::null_mut()),
+			         CountedPtr::new(ptr::null_mut()),
+			         CountedPtr::new(ptr::null_mut()),
+			         CountedPtr::new(ptr::null_mut())], // 4th slot is initial
+			  new_cnt:AccessCounter::new(AccessState::RrCc),
+			  old_cnt:AccessCounter::new(AccessState::RrCc)
 			     }
 	}
 
+	fn new_ptr(ptr:*mut SharedCount<T>) -> Shared<T> {
+		Shared{bins:[CountedPtr::new(ptr::null_mut()),
+			         CountedPtr::new(ptr::null_mut()),
+			         CountedPtr::new(ptr::null_mut()),
+			         CountedPtr::new(ptr)], // 4th slot is initial
+			  new_cnt:AccessCounter::new(AccessState::RrCc),
+			  old_cnt:AccessCounter::new(AccessState::RrCc)
+			     }	
+	}
+
 	pub fn clone(&self) -> Shared<T> {
-		let key = self.new_cnt.fetch_add(1, Ordering::SeqCst);
-		let state = AccessState::from_u64(key);
-		let count = AccessState::count_u64(key);
+		let key = self.new_cnt.inc();
+		let state = key & 0b11;
+		let count =  key >> 2;
+		let mut cloned = ptr::null_mut();
 		match state {
 			AccessState::RrCc => {
-				// 3 for clone
+				cloned = self.bins[3].duplicate();
+				if cloned == ptr::null_mut() {
+					cloned = self.bins[2].duplicate();
+					assert!(cloned != ptr::null_mut());
+				}
+
 			},
 			AccessState::RcRc => {},
 			AccessState::CcRr => {},
 			AccessState::CrCr => {}
 		}
+		if !AccessState::eq_u64(self.new_cnt.load(Ordering::SeqCst), state) {
+			// the state has changed, decrement counter from previous generation
+			self.old_cnt.fetch_sub(1, Ordering::SeqCst);
+		} else {
+			self.new_cnt.fetch_sub(1, Ordering::SeqCst);
+		}
+		return Shared::new_ptr(cloned);
 	}
 }
 
