@@ -71,11 +71,19 @@ impl AccessCounter {
 	fn inc(&self) -> u64 {
 		self.0.fetch_add(0b100, Ordering::SeqCst)
 	}
+
+	fn inc_and_get_state(&self) -> AccessState {
+		match self.0.fetch_add(0b100, Ordering::SeqCst) & 0b11 {
+			0 => AccessState::RrCc,
+			1 => AccessState::RcRc,
+			2 => AccessState::CcRr,
+			3 => AccessState::CrCr
+		}
+	}
 	// Always subs in decrement of 0b100, to never touch 2bit flag
 	fn dec(&self) -> u64 {
 		self.0.fetch_sub(0b100, Ordering::SeqCst)
 	}
-
 	// todo - swap to next
 }
 
@@ -151,9 +159,7 @@ impl<T> Shared<T> {
 	}
 
 	pub fn clone(&self) -> Shared<T> {
-		let key = self.new_cnt.inc();
-		let state = key & 0b11;
-		let count =  key >> 2;
+		let state = self.new_cnt.inc_and_get_state();
 		let mut cloned = ptr::null_mut();
 		match state {
 			AccessState::RrCc => {
@@ -162,11 +168,28 @@ impl<T> Shared<T> {
 					cloned = self.bins[2].duplicate();
 					assert!(cloned != ptr::null_mut());
 				}
-
 			},
-			AccessState::RcRc => {},
-			AccessState::CcRr => {},
-			AccessState::CrCr => {}
+			AccessState::RcRc => {
+				cloned = self.bins[1].duplicate();
+				if cloned == ptr::null_mut() {
+					cloned = self.bins[3].duplicate();
+					assert!(cloned != ptr::null_mut());
+				}
+			},
+			AccessState::CcRr => {
+				cloned = self.bins[0].duplicate();
+				if cloned == ptr::null_mut() {
+					cloned = self.bins[1].duplicate();
+					assert!(cloned != ptr::null_mut());
+				}				
+			},
+			AccessState::CrCr => {
+				cloned = self.bins[2].duplicate();
+				if cloned == ptr::null_mut() {
+					cloned = self.bins[0].duplicate();
+					assert!(cloned != ptr::null_mut());
+				}
+			}
 		}
 		if !AccessState::eq_u64(self.new_cnt.load(Ordering::SeqCst), state) {
 			// the state has changed, decrement counter from previous generation
