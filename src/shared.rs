@@ -148,6 +148,7 @@ impl<T> CountedPtr<T> {
 		}
 		let swapped_out = self.0.swap(ptr, Ordering::SeqCst);
 		SharedCount::dec_count(swapped_out);
+		self.2.fetch_sub(1, Ordering::SeqCst);
 		return true;
 	}
 }
