@@ -34,6 +34,18 @@ enum AccessState {
 	CrCr = 3
 }
 
+impl AccessState {
+	fn from_u64(val:u64) -> AccessState {
+		match val & 0b11 {
+			0 => AccessState::RrCc,
+			1 => AccessState::RcRc,
+			2 => AccessState::CcRr,
+			3 => AccessState::CrCr,
+			_ => panic!("Unexpected value {:?}", val & 0b11)
+		}
+	}
+}
+
 struct AccessStateCount(AccessState, u64);
 
 struct AccessCounter(AtomicU64);
@@ -48,23 +60,12 @@ impl AccessCounter {
 	}
 
 	fn state(&self) -> AccessState {
-		match self.0.load(Ordering::SeqCst) & 0b11 {
-			0 => AccessState::RrCc,
-			1 => AccessState::RcRc,
-			2 => AccessState::CcRr,
-			3 => AccessState::CrCr
-		}
+		AccessState::from_u64(self.0.load(Ordering::SeqCst))
 	}
 
 	fn state_and_count(&self) -> AccessStateCount {
-		let value = self.0.load(Ordering:SeqCst);
-		let state = match value & 0b11 {
-			0 => AccessState::RrCc,
-			1 => AccessState::RcRc,
-			2 => AccessState::CcRr,
-			3 => AccessState::CrCr
-		};
-		AccessStateCount(state, value >> 2)
+		let value = self.0.load(Ordering::SeqCst);
+		AccessStateCount(AccessState::from_u64(value), value >> 2)
 	}
 
 	// Always adds in increment of 0b100, to never touch 2bit flag
@@ -72,17 +73,12 @@ impl AccessCounter {
 		self.0.fetch_add(0b100, Ordering::SeqCst)
 	}
 
-	fn inc_by(&self, amount:u64) {
+	fn inc_by(&self, amount:u64) -> u64 {
 		self.0.fetch_add(amount >> 2, Ordering::SeqCst)
 	}
 
 	fn inc_and_get_state(&self) -> AccessState {
-		match self.0.fetch_add(0b100, Ordering::SeqCst) & 0b11 {
-			0 => AccessState::RrCc,
-			1 => AccessState::RcRc,
-			2 => AccessState::CcRr,
-			3 => AccessState::CrCr
-		}
+		AccessState::from_u64(self.0.fetch_add(0b100, Ordering::SeqCst))
 	}
 	// Always subs in decrement of 0b100, to never touch 2bit flag
 	fn dec(&self) -> u64 {
@@ -90,12 +86,7 @@ impl AccessCounter {
 	}
 
 	fn dec_and_get_state(&self) -> AccessState {
-		match self.0.fetch_sub(0b100, Ordering::SeqCst) & 0b11 {
-			0 => AccessState::RrCc,
-			1 => AccessState::RcRc,
-			2 => AccessState::CcRr,
-			3 => AccessState::CrCr
-		}
+		AccessState::from_u64(self.0.fetch_sub(0b100, Ordering::SeqCst))
 	}
 	// This must be called by a single thread at a time
 	fn swap_to_next_state(&self) -> AccessStateCount {
@@ -113,7 +104,7 @@ impl AccessCounter {
 				self.0.swap(AccessState::RrCc as u64, Ordering::SeqCst)
 			}
 		};
-		AccessStateCount(swapped_out & 0b11, swapped_out >> 2)
+		AccessStateCount(AccessState::from_u64(swapped_out), swapped_out >> 2)
 	}
 }
 
@@ -182,7 +173,7 @@ impl<T> Shared<T> {
 			         CountedPtr::new(ptr::null_mut())], // 4th slot is initial
 			  new_cnt:AccessCounter::new(AccessState::RrCc),
 			  old_cnt:AccessCounter::new(AccessState::RrCc),
-			  gen_key::AtomicBool::new(true)
+			  gen_key:AtomicBool::new(true)
 			     }
 	}
 
@@ -193,7 +184,7 @@ impl<T> Shared<T> {
 			         CountedPtr::new(ptr)], // 4th slot is initial
 			  new_cnt:AccessCounter::new(AccessState::RrCc),
 			  old_cnt:AccessCounter::new(AccessState::RrCc),
-			  gen_key::AtomicBool::new(true)
+			  gen_key:AtomicBool::new(true)
 			     }	
 	}
 
