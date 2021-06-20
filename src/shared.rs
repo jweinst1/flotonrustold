@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::{thread, time, ptr};
 
 struct SharedCount<T>(*mut T, AtomicUsize);
@@ -70,6 +70,10 @@ impl AccessCounter {
 	// Always adds in increment of 0b100, to never touch 2bit flag
 	fn inc(&self) -> u64 {
 		self.0.fetch_add(0b100, Ordering::SeqCst)
+	}
+
+	fn inc_by(&self, amount:u64) {
+		self.0.fetch_add(amount >> 2, Ordering::SeqCst)
 	}
 
 	fn inc_and_get_state(&self) -> AccessState {
@@ -157,10 +161,17 @@ impl<T> CountedPtr<T> {
 	}
 }
 
+impl<T> Drop for CountedPtr<T> {
+    fn drop(&mut self) {
+        SharedCount::dec_count(self.0.load(Ordering::SeqCst))
+    }
+}
+
 pub struct Shared<T> {
 	bins:[CountedPtr<T>; 4],
 	new_cnt:AccessCounter,
-	old_cnt:AccessCounter
+	old_cnt:AccessCounter,
+	gen_key:AtomicBool
 }
 
 impl<T> Shared<T> {
@@ -170,7 +181,8 @@ impl<T> Shared<T> {
 			         CountedPtr::new(ptr::null_mut()),
 			         CountedPtr::new(ptr::null_mut())], // 4th slot is initial
 			  new_cnt:AccessCounter::new(AccessState::RrCc),
-			  old_cnt:AccessCounter::new(AccessState::RrCc)
+			  old_cnt:AccessCounter::new(AccessState::RrCc),
+			  gen_key::AtomicBool::new(true)
 			     }
 	}
 
@@ -180,15 +192,65 @@ impl<T> Shared<T> {
 			         CountedPtr::new(ptr::null_mut()),
 			         CountedPtr::new(ptr)], // 4th slot is initial
 			  new_cnt:AccessCounter::new(AccessState::RrCc),
-			  old_cnt:AccessCounter::new(AccessState::RrCc)
+			  old_cnt:AccessCounter::new(AccessState::RrCc),
+			  gen_key::AtomicBool::new(true)
 			     }	
 	}
 
-	pub fn reset(&self, val:T) {
-		// todo
+	fn grab_key(&self) -> bool {
+		self.gen_key.swap(false, Ordering::SeqCst)
 	}
 
-	pub fn clone(&self) -> Shared<T> {
+	fn reset_sc(&self, ptr:*mut SharedCount<T>) {
+		let state = self.new_cnt.inc_and_get_state();
+		match state {
+			AccessState::RrCc => {
+				if !self.bins[1].reset(ptr) {
+					assert!(self.bins[0].reset(ptr));
+				}
+			},
+			AccessState::RcRc => {
+				if !self.bins[0].reset(ptr) {
+					assert!(self.bins[2].reset(ptr));
+				}				
+			},
+			AccessState::CcRr => {
+				if !self.bins[2].reset(ptr) {
+					assert!(self.bins[3].reset(ptr));
+				}
+			},
+			AccessState::CrCr => {
+				if !self.bins[3].reset(ptr) {
+					assert!(self.bins[1].reset(ptr));
+				}
+			}
+		}
+		let state2 = self.new_cnt.dec_and_get_state();
+		if state != state2 {
+			// new to correct the count
+			self.new_cnt.inc();
+			// This attendance count belongs to the old generation
+			self.old_cnt.dec();
+		}
+		// Attempt next generation advancement
+		if self.old_cnt.count() == 0 {
+			if self.grab_key() {
+				let state_count = self.new_cnt.swap_to_next_state();
+				self.old_cnt.inc_by(state_count.1);
+				// put key back when finished
+				self.gen_key.store(true, Ordering::SeqCst);
+			}
+		}
+	}
+
+	pub fn reset(&self, val:Option<T>) {
+		match val {
+			Some(v) => self.reset_sc(SharedCount::make(v)),
+			None => self.reset_sc(ptr::null_mut())
+		}
+	}
+
+	fn clone_sc(&self) -> *mut SharedCount<T> {
 		let state = self.new_cnt.inc_and_get_state();
 		let mut cloned = ptr::null_mut();
 		match state {
@@ -229,7 +291,11 @@ impl<T> Shared<T> {
 			self.old_cnt.dec();
 		}
 
-		return Shared::new_ptr(cloned);
+		return cloned;
+	}
+
+	pub fn clone(&self) -> Shared<T> {
+		Shared::new_ptr(self.clone_sc())
 	}
 }
 
@@ -238,24 +304,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn from_u64_works() {
-    	let cnt:u64 = (2 << 62) + 3;
-    	let state = AccessState::from_u64(cnt);
-    	assert_eq!(state, AccessState::CcRr);
-    }
-
-    #[test]
-    fn eq_u64_works() {
-    	let cnt1:u64 = (2 << 62) + 3;
-    	let cnt2:u64 = (2 << 62) + 56;
-    	let cnt3:u64 = (1 << 62) + 3;
-    	assert!(AccessState::eq_u64(cnt1, cnt2));
-    	assert!(!AccessState::eq_u64(cnt2, cnt3));
-    }
-
-    #[test]
-    fn count_u64_works() {
-    	let cnt:u64 = (2 << 62) + 56;
-    	assert!(AccessState::count_u64(cnt) == 56);
+    fn it_works() {
+    	
     }
 }
