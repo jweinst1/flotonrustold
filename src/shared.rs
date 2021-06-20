@@ -163,7 +163,8 @@ pub struct Shared<T> {
 	bins:[CountedPtr<T>; 4],
 	new_cnt:AccessCounter,
 	old_cnt:AccessCounter,
-	gen_key:AtomicBool
+	gen_key:AtomicBool,
+	gen_ready:AtomicBool
 }
 
 impl<T> Shared<T> {
@@ -174,7 +175,8 @@ impl<T> Shared<T> {
 			         CountedPtr::new(ptr::null_mut())], // 4th slot is initial
 			  new_cnt:AccessCounter::new(AccessState::RrCc),
 			  old_cnt:AccessCounter::new(AccessState::RrCc),
-			  gen_key:AtomicBool::new(true)
+			  gen_key:AtomicBool::new(true),
+			  gen_ready:AtomicBool::new(false)
 			     }
 	}
 
@@ -185,7 +187,8 @@ impl<T> Shared<T> {
 			         CountedPtr::new(ptr)], // 4th slot is initial
 			  new_cnt:AccessCounter::new(AccessState::RrCc),
 			  old_cnt:AccessCounter::new(AccessState::RrCc),
-			  gen_key:AtomicBool::new(true)
+			  gen_key:AtomicBool::new(true),
+			  gen_ready:AtomicBool::new(false)
 			     }	
 	}
 
@@ -232,6 +235,9 @@ impl<T> Shared<T> {
 				// put key back when finished
 				self.gen_key.store(true, Ordering::SeqCst);
 			}
+		} else {
+			// a clone will take over this duty
+		    self.gen_ready.store(true, Ordering::SeqCst);
 		}
 	}
 
@@ -283,6 +289,15 @@ impl<T> Shared<T> {
 			self.old_cnt.dec();
 		}
 
+		if self.gen_ready.swap(false, Ordering::SeqCst) {
+			if self.grab_key() {
+				let state_count = self.new_cnt.swap_to_next_state();
+				self.old_cnt.inc_by(state_count.1);
+				// put key back when finished
+				self.gen_key.store(true, Ordering::SeqCst);
+			}
+			// no need to put back key since may not be time to advance yet
+		}
 		return cloned;
 	}
 
