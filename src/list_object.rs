@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::{thread, ptr};
-use crate::time_ptr::TimePtr;
+use crate::time_ptr::*;
 
 // Stands for generation ptr
 // this would be time instead
@@ -68,6 +68,10 @@ impl<T> ThreadLocalStorage<T> {
         ThreadLocalStorage{value:AtomicPtr::new(ptr::null_mut()), 
                            value_time:AtomicU64::new(0), 
                            free_list:FreeList::new()}
+    }
+
+    fn is_unused(&self) -> bool {
+        self.value.load(Ordering::SeqCst) == ptr::null_mut()
     }
 }
 
@@ -275,7 +279,27 @@ impl<T> ListObject<T> {
     }
 }
 
-enum Placed<T> {
+enum ObjectForm<T> {
     Value(T),
     List(ListObject<T>)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    //use std::sync::atomic::{AtomicPtr, AtomicI64, Ordering};
+
+    #[test]
+    fn freenode_works() {
+        set_epoch();
+        let tptr = TimePtr::make(30, 1);
+        let fnode = FreeNode::new_ptr(tptr);
+        unsafe {
+            match fnode.as_ref() {
+                Some(r) => assert!(r.0.load(Ordering::SeqCst) == tptr),
+                None => panic!("nullptr returned from FreeNode::new_ptr")
+            }
+        }
+        destroy_epoch();
+    }
 }
