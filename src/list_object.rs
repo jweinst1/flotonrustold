@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::{thread, ptr};
 use crate::time_ptr::*;
+use crate::configs::Configs;
 
 // Stands for generation ptr
 // this would be time instead
@@ -20,14 +21,14 @@ impl<T> FreeNode<T> {
 }
 // This is not actually thread safe, this should only be called by a specific thread
 // but we need this to trick rust's strict mutable borrow checker.
-struct FreeList<T>(AtomicPtr<FreeNode<T>>, AtomicUsize);
+struct FreeList<T>(AtomicPtr<FreeNode<T>>, AtomicU32);
 
 impl<T> FreeList<T> {
     fn new() -> FreeList<T> {
-        FreeList(AtomicPtr::new(FreeNode::new()), AtomicUsize::new(0))
+        FreeList(AtomicPtr::new(FreeNode::new()), AtomicU32::new(0))
     }
 
-    fn count(&self) -> usize {
+    fn count(&self) -> u32 {
         self.1.load(Ordering::SeqCst)
     }
 
@@ -102,9 +103,9 @@ impl<T> ThreadSpecificArray<T> {
         return true
     }
 
-    fn free_run(&self, tid:u8, limit:usize) -> usize  {
+    fn free_run(&self, tid:u8) -> u32  {
         let flist = &self.0[tid as usize].free_list;
-        if flist.1.load(Ordering::SeqCst) < limit {
+        if flist.1.load(Ordering::SeqCst) < Configs::get_free_list_limit() {
             return 0;
         }
         let mut freed = 0;
@@ -301,5 +302,36 @@ mod tests {
             }
         }
         destroy_epoch();
+    }
+
+    #[test]
+    fn freelist_add_works() {
+        set_epoch();
+        let flist = FreeList::new();
+        let value:u32 = 777;
+        assert!(flist.count() == 0);
+        let tptr = TimePtr::make(value, 1);
+        flist.add(tptr);
+        unsafe {
+            let checked_ptr = flist.0.load(Ordering::SeqCst).as_ref().unwrap().0.load(Ordering::SeqCst);
+            assert_eq!(checked_ptr, tptr);
+        }
+        assert!(flist.count() == 1);
+        let tptr2 = TimePtr::make(555, 1);
+        flist.add(tptr2);
+        unsafe {
+            let checked_ptr = flist.0.load(Ordering::SeqCst).as_ref().unwrap()
+                            .1.load(Ordering::SeqCst).as_ref().unwrap().0.load(Ordering::SeqCst);
+            assert_eq!(checked_ptr, tptr2);
+        }
+        assert!(flist.count() == 2);                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+        destroy_epoch();
+    }
+
+    #[test]
+    fn thread_ls_works() {
+        let tls = ThreadLocalStorage::<i32>::new();
+        assert!(tls.value.load(Ordering::SeqCst) == ptr::null_mut());
+        assert!(tls.value_time.load(Ordering::SeqCst) == 0);
     }
 }
