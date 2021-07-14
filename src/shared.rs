@@ -1,12 +1,15 @@
-use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::{thread, ptr};
 use std::time::{Duration, Instant};
+use std::mem::{self, MaybeUninit};
 use std::convert::TryFrom;
 
-static MONOTONIC_EPOCH:AtomicPtr<Instant> = AtomicPtr::new(ptr::null_mut());
+// Note, must be initialized from single threaded context
+static mut MONOTONIC_EPOCH:MaybeUninit<Instant> = unsafe { MaybeUninit::<Instant>::uninit() };
 static FREE_LIST_DEFAULT:u32 = 10;
 static FREE_LIST_LIM:AtomicU32 = AtomicU32::new(FREE_LIST_DEFAULT);
-static THREAD_COUNT:AtomicUsize = AtomicUsize::new(8);
+static THREAD_COUNT_DEFAULT:usize = 8;
+static THREAD_COUNT:AtomicUsize = AtomicUsize::new(THREAD_COUNT_DEFAULT);
 
 pub fn get_thread_count() -> usize {
     THREAD_COUNT.load(Ordering::SeqCst)
@@ -20,23 +23,17 @@ pub fn set_free_list_lim(limit:u32) {
     FREE_LIST_LIM.store(limit, Ordering::SeqCst);
 }
 
-// only call once
 pub fn set_epoch() {
-	let swapped_out = MONOTONIC_EPOCH.swap(Box::into_raw(Box::new(Instant::now())), Ordering::SeqCst);
-    if swapped_out != ptr::null_mut() {
-        unsafe { drop(Box::from_raw(swapped_out)); }
+    unsafe {
+        MONOTONIC_EPOCH.as_mut_ptr().write(Instant::now());
     }
 }
 
 pub fn check_time() -> u64 {
 	unsafe {
-		match MONOTONIC_EPOCH.load(Ordering::SeqCst).as_ref() {
-			// todo, configure precision
-			Some(r) => match u64::try_from(r.elapsed().as_nanos()) {
-				Ok(v) => v,
-				Err(e) => panic!("Could not convert monotonic tick to u64, err: {:?}", e)
-			},
-			None => panic!("MONOTONIC_EPOCH was loaded but not initialized!")
+		match u64::try_from(MONOTONIC_EPOCH.assume_init().elapsed().as_nanos()) {
+			Ok(v) => v,
+			Err(e) => panic!("Could not convert monotonic tick to u64, err: {:?}", e)
 		}
 	}
 }
@@ -281,5 +278,34 @@ mod tests {
         // still shouldn't free since other thread slots 
         assert!(shared.free_run(0) == 0);
         set_free_list_lim(FREE_LIST_DEFAULT);
+    }
+
+    #[test]
+    fn shared_rw_works() {
+        set_epoch();
+        let shared = Shared::<TestType>::new();
+        let to_write = TimePtr::make(TestType(5));
+        shared.write(to_write, 0);
+        assert_eq!(to_write, shared.cur_ptr.load(Ordering::SeqCst));
+        assert_eq!(to_write, shared.read(0));
+    }
+
+    #[test]
+    fn shared_rw_time_works() {
+        set_epoch();
+        let shared = Shared::<TestType>::new();
+        let to_write1 = TimePtr::make(TestType(5));
+        let to_write2 = TimePtr::make(TestType(1));
+        let wtime1 = TimePtr::get_time(to_write1).unwrap();
+        let wtime2 = TimePtr::get_time(to_write2).unwrap();
+        shared.write(to_write1, 0);
+        shared.read(0);
+        let seen_time1 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
+        shared.write(to_write2, 0);
+        shared.read(0);
+        let seen_time2 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
+        assert_eq!(seen_time1, wtime1);
+        assert_eq!(seen_time2, wtime2);
+        assert!(seen_time1 < seen_time2);
     }
 }
