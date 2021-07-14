@@ -334,4 +334,9 @@ mod tests {
         assert!(tls.value.load(Ordering::SeqCst) == ptr::null_mut());
         assert!(tls.value_time.load(Ordering::SeqCst) == 0);
     }
+
+    #[test]
+    fn tsa_works() {
+        
+    }
 }
