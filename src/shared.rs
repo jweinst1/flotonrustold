@@ -198,6 +198,16 @@ impl<T> Shared<T> {
             None => ptr::null_mut()
         }
     }
+
+    pub fn update_time(&self, tid:usize) -> bool {
+        match TimePtr::get_time(self.cur_ptr.load(Ordering::SeqCst)) {
+            Some(ti) => {
+                self.time_keeps[tid].cur_time.store(ti, Ordering::SeqCst);
+                true
+            },
+            None => false
+        }
+    }
 }
 
 
@@ -281,6 +291,18 @@ mod tests {
     }
 
     #[test]
+    fn shared_timecheck_works() {
+        set_epoch();
+        assert!(THREAD_COUNT.load(Ordering::SeqCst) > 3);
+        let shared = Shared::<TestType>::new();
+        let to_write = TimePtr::make(TestType(5));
+        shared.write(to_write, 0);
+        shared.write(TimePtr::make(TestType(5)), 1);
+        shared.write(TimePtr::make(TestType(5)), 2);
+        assert!(!shared.time_check(TimePtr::get_time(to_write).unwrap()));
+    }
+
+    #[test]
     fn shared_rw_works() {
         set_epoch();
         let shared = Shared::<TestType>::new();
@@ -306,6 +328,17 @@ mod tests {
         let seen_time2 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
         assert_eq!(seen_time1, wtime1);
         assert_eq!(seen_time2, wtime2);
+        assert!(seen_time1 < seen_time2);
+    }
+
+    #[test]
+    fn shared_update_time_works() {
+        set_epoch();
+        let shared = Shared::<TestType>::new();
+        shared.write(TimePtr::make(TestType(5)), 0);
+        let seen_time1 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
+        assert!(shared.update_time(0));
+        let seen_time2 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
         assert!(seen_time1 < seen_time2);
     }
 }
