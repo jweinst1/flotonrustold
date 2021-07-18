@@ -5,7 +5,7 @@ use std::mem::{self, MaybeUninit};
 use std::convert::TryFrom;
 
 // Note, must be initialized from single threaded context
-static mut MONOTONIC_EPOCH:MaybeUninit<Instant> = unsafe { MaybeUninit::<Instant>::uninit() };
+static mut MONOTONIC_EPOCH:MaybeUninit<Instant> = MaybeUninit::<Instant>::uninit();
 static FREE_LIST_DEFAULT:u32 = 10;
 static FREE_LIST_LIM:AtomicU32 = AtomicU32::new(FREE_LIST_DEFAULT);
 static THREAD_COUNT_DEFAULT:usize = 8;
@@ -31,6 +31,7 @@ pub fn set_epoch() {
 
 pub fn check_time() -> u64 {
 	unsafe {
+        // todo, make precision configurable
 		match u64::try_from(MONOTONIC_EPOCH.assume_init().elapsed().as_nanos()) {
 			Ok(v) => v,
 			Err(e) => panic!("Could not convert monotonic tick to u64, err: {:?}", e)
@@ -38,6 +39,7 @@ pub fn check_time() -> u64 {
 	}
 }
 
+#[derive(Debug)]
 pub struct TimePtr<T>(pub T, pub u64);
 
 impl<T> TimePtr<T> {
@@ -57,6 +59,7 @@ impl<T> TimePtr<T> {
 
 // This is not actually thread safe, this should only be called by a specific thread
 // but we need this to trick rust's strict mutable borrow checker.
+#[derive(Debug)]
 struct FreeNode<T>(AtomicPtr<TimePtr<T>>, AtomicPtr<FreeNode<T>>);
 
 impl<T> FreeNode<T> {
@@ -70,6 +73,7 @@ impl<T> FreeNode<T> {
 }
 // This is not actually thread safe, this should only be called by a specific thread
 // but we need this to trick rust's strict mutable borrow checker.
+#[derive(Debug)]
 struct FreeList<T>(AtomicPtr<FreeNode<T>>, AtomicU32);
 
 impl<T> FreeList<T> {
@@ -107,11 +111,13 @@ impl<T> FreeList<T> {
     }
 }
 
+#[derive(Debug)]
 struct ThreadStorage<T> {
     cur_time:AtomicU64,
     free_list:FreeList<T>
 }
 
+#[derive(Debug)]
 pub struct Shared<T> {
     time_keeps:Vec<ThreadStorage<T>>,
     cur_ptr:AtomicPtr<TimePtr<T>>
@@ -125,6 +131,12 @@ impl<T> Shared<T> {
             ts_vec.push(ThreadStorage{cur_time:AtomicU64::new(0), free_list:FreeList::new()});
         }
         Shared{time_keeps:ts_vec, cur_ptr:AtomicPtr::new(ptr::null_mut())}
+    }
+
+    pub fn new_val(val:T) -> Shared<T> {
+        let made = Shared::new();
+        made.cur_ptr.store(TimePtr::make(val), Ordering::SeqCst);
+        made
     }
     
     pub fn t_count(&self) -> usize {
