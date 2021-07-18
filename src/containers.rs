@@ -60,7 +60,7 @@ impl<T: Debug> Container<T> {
 	pub fn count(&self) -> usize {
 		match self {
 			Container::List(l) => l.len(),
-			_ => 0
+			_ => 1
 		}
 	}
 }
@@ -88,7 +88,7 @@ mod tests {
     }
 
     #[test]
-    fn container_set_works() {
+    fn container_set_list_works() {
     	set_epoch();
     	let cont = Container::<TestType>::new_list(2);
     	cont.set_list(0, TestType(10), 0);
@@ -108,25 +108,33 @@ mod tests {
 			Container::Val(v) => panic!("Expected List but got Val({:?})", v)
 		}
     }
-    /*
+
     #[test]
-    fn container_get_works() {
+    fn container_set_val_works() {
     	set_epoch();
-    	let cont = Container::<TestType>::new(2);
+    	let cont = Container::<TestType>::new_list(2);
+    	cont.set_list(0, TestType(6), 0);
+    	match cont.get_list(0, 0) {
+    		Some(r) => r.set_val(TestType(3), 0),
+    		None => panic!("Expected val, but got nullptr")
+    	}
+
+    	match cont.get_list(0, 0) {
+    		Some(r) => assert_eq!(r.get_val(0).unwrap().0, 3),
+    		None => panic!("Expected val, but got nullptr")
+    	}
+
+    }
+    
+    #[test]
+    fn container_get_list_works() {
+    	set_epoch();
+    	let cont = Container::<TestType>::new_list(2);
     	let value = 6;
-    	cont.set(0, TestType(value), 0);
-    	match cont.get(0, 0) {
-    		Some(r) => assert_eq!(r.0, value),
+    	cont.set_list(0, TestType(value), 0);
+    	match cont.get_list(0, 0) {
+    		Some(r) => assert_eq!(r.get_val(0).unwrap().0, value),
     		None => panic!("Expeted {:?}, got nullptr", TestType(value))
     	}
     }
-
-    #[test]
-    fn container_get_set_nested() {
-    	let cont1 = Container::new(2);
-    	let cont2 = Container::new(2);
-    	cont2.set(0, TestType(7), 0);
-    	cont1.set(0, cont2, 0);
-
-    }*/
 }
