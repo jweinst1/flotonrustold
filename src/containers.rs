@@ -5,7 +5,7 @@ use crate::shared::*;
 
 #[derive(Debug)]
 pub enum Container<T> {
-	Val(Shared<T>),
+	Val(T),
 	List(Vec<Shared<Container<T>>>)
 }
 
@@ -19,17 +19,10 @@ impl<T: Debug> Container<T> {
 		Container::List(fields)
 	}
 
-	pub fn set_list(&self, pos:usize, val:T, tid:usize) {
+	pub fn set_list(&self, pos:usize, val:Container<T>, tid:usize) {
 		match self {
 			Container::Val(v) => panic!("Expected List, got Val({:?})", v),
-			Container::List(l) => l[pos].write(TimePtr::make(Container::Val(Shared::new_val(val))), tid)
-		}
-	}
-
-	pub fn set_val(&self, val:T, tid:usize) {
-		match self {
-			Container::Val(v) => v.write(TimePtr::make(val), tid),
-			Container::List(l) => panic!("Expected Val, got List({:?})", l)
+			Container::List(l) => l[pos].write(TimePtr::make(val), tid)
 		}
 	}
 
@@ -45,14 +38,9 @@ impl<T: Debug> Container<T> {
 		}
 	}
 
-	pub fn get_val(&self, tid:usize) -> Option<&T> {
+	pub fn value(&self) -> &T {
 		match self {
-			Container::Val(v) => unsafe {
-				match v.read(tid).as_ref() {
-					Some(r) => Some(&r.0),
-					None => None
-				}				
-			},
+			Container::Val(v) => v,
 			Container::List(l) => panic!("Expected Val, got List({:?})", l)
 		}
 	}
@@ -91,17 +79,17 @@ mod tests {
     fn container_set_list_works() {
     	set_epoch();
     	let cont = Container::<TestType>::new_list(2);
-    	cont.set_list(0, TestType(10), 0);
-    	cont.set_list(1, TestType(5), 0);
+    	cont.set_list(0, Container::Val(TestType(10)), 0);
+    	cont.set_list(1, Container::Val(TestType(5)), 0);
 		match cont {
 			Container::List(l) => unsafe {
 		    	match l[0].read(0).as_ref() {
-		    		Some(r) => assert_eq!(r.0.get_val(0).unwrap().0, 10),
+		    		Some(r) => assert_eq!(r.0.value().0, 10),
 		    		None => panic!("Expected {:?} at position {:?}, got nullptr", TestType(10), 0)
 		    	}
 
 		    	match l[1].read(0).as_ref() {
-		    		Some(r) => assert_eq!(r.0.get_val(0).unwrap().0, 5),
+		    		Some(r) => assert_eq!(r.0.value().0, 5),
 		    		None => panic!("Expected {:?} at position {:?}, got nullptr", TestType(5), 1)
 		    	}
 			},
@@ -110,17 +98,14 @@ mod tests {
     }
 
     #[test]
-    fn container_set_val_works() {
+    fn container_set_list2_works() {
     	set_epoch();
     	let cont = Container::<TestType>::new_list(2);
-    	cont.set_list(0, TestType(6), 0);
-    	match cont.get_list(0, 0) {
-    		Some(r) => r.set_val(TestType(3), 0),
-    		None => panic!("Expected val, but got nullptr")
-    	}
+    	cont.set_list(0, Container::Val(TestType(6)), 0);
+    	cont.set_list(0, Container::Val(TestType(3)), 0);
 
     	match cont.get_list(0, 0) {
-    		Some(r) => assert_eq!(r.get_val(0).unwrap().0, 3),
+    		Some(r) => assert_eq!(r.value().0, 3),
     		None => panic!("Expected val, but got nullptr")
     	}
 
@@ -131,10 +116,28 @@ mod tests {
     	set_epoch();
     	let cont = Container::<TestType>::new_list(2);
     	let value = 6;
-    	cont.set_list(0, TestType(value), 0);
+    	cont.set_list(0, Container::Val(TestType(value)), 0);
     	match cont.get_list(0, 0) {
-    		Some(r) => assert_eq!(r.get_val(0).unwrap().0, value),
+    		Some(r) => assert_eq!(r.value().0, value),
     		None => panic!("Expeted {:?}, got nullptr", TestType(value))
+    	}
+    }
+
+    #[test]
+    fn container_nested_list_works() {
+    	set_epoch();
+    	let cont = Container::<TestType>::new_list(2);
+    	let value = 6;
+    	cont.set_list(0, Container::Val(TestType(value)), 0);
+    	let outer = Container::<TestType>::new_list(2);
+    	outer.set_list(0, cont, 0);
+    	outer.set_list(1, Container::Val(TestType(value)), 0);
+    	match outer.get_list(0, 0) {
+    		Some(r) => match r.get_list(0, 0) {
+    			Some(ri) => assert_eq!(ri.value().0, value),
+    			None => panic!("Expeted List(List(Val({:?}))), but got nullptr", TestType(value))
+    		},
+    		None => panic!("Expected List, but got nullptr")
     	}
     }
 }
