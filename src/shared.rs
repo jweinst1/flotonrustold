@@ -155,7 +155,7 @@ impl<T> Shared<T> {
 
     pub fn free_run(&self, tid:usize) -> u32  {
         let flist = &self.time_keeps[tid].free_list;
-        if flist.1.load(Ordering::SeqCst) < FREE_LIST_LIM.load(Ordering::SeqCst) {
+        if flist.count() < FREE_LIST_LIM.load(Ordering::SeqCst) {
             return 0;
         }
         //println!("Running free list on thread: {}", tid);
