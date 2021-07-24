@@ -35,9 +35,9 @@ enum BitTrie<T> {
 }
 
 impl<T: Debug> BitTrie<T> {
-	fn new_item(key:&String, val:Container<T>) -> *mut BitTrie<T> {
+	fn new_item(key:&String) -> *mut BitTrie<T> {
 		Box::into_raw(Box::new(BitTrie::Item(key.to_string(), 
-			                                     shared::Shared::new_val(val), 
+			                                     shared::Shared::new(), 
 			                                     AtomicPtr::new(ptr::null_mut()))))
 	}
 
@@ -70,7 +70,28 @@ impl<T: Debug> BitTrie<T> {
 		))
 	}
 
-	fn insert(trie: *mut BitTrie<T>, key:String, val:Container<T>) {
+	fn find(trie:*mut BitTrie<T>, key:String, tid:usize) -> Option<&shared::Shared<Container<T>>> {
+		unsafe {
+			match trie.as_ref() {
+				Some(r) => match r {
+					BitTrie::Entry(hasher, childs) => {
+						let mut cur_ptr = ptr::null_mut();
+						let hash_seq = hasher.hash(key.as_bytes());
+						let slot1 = &childs[(hash_seq & 1) as usize];
+						let slot1_ptr = slot1.load(Ordering::SeqCst);
+						if slot1_ptr == ptr::null_mut() {
+							return None;
+						}
+					},
+					BitTrie::Connect(_) => panic!("Attempted to call find on Connect node: {:?}", r),
+					BitTrie::Item(_, _, _) => panic!("Attempted to call find on Item node: {:?}", r)
+				},
+				None => panic!("Expected trie for find but got nullptr")
+			}
+		}
+	}
+
+	fn insert(trie: *mut BitTrie<T>, key:String, val:Container<T>, tid:usize, update:bool) {
 		unsafe {
 		match trie.as_ref() {
 			Some(r) => {
@@ -130,9 +151,15 @@ impl<T: Debug> BitTrie<T> {
 											// item node is present , collision ?
 											cur_ptr = slotl_ptr;
 										} else {
-											let to_insert_item = BitTrie::new_item(&key, val);
+											let to_insert_item = BitTrie::new_item(&key);
 											match slotl.compare_exchange(ptr::null_mut(), to_insert_item, Ordering::SeqCst, Ordering::SeqCst) {
-												Ok(_) =>  {  return; },
+												Ok(_) =>  {
+													match to_insert_item.as_ref().unwrap() {
+														BitTrie::Item(_, sh, _) => sh.write(shared::TimePtr::make(val), tid),
+														_ => panic!("Expected just created Item, got other variant")
+													}
+													return;
+												},
 												Err(p) => {
 													drop(Box::from_raw(to_insert_item));
 													// collision
@@ -153,20 +180,22 @@ impl<T: Debug> BitTrie<T> {
 								match rcolls {
 									BitTrie::Item(k, v, p) => {
 										if k == &key {
-											// not an update, time to return
+											if update {
+												v.write(shared::TimePtr::make(val), tid);
+											}
 											return;
 										} else {
 											let next_gen_ptr = p.load(Ordering::SeqCst);
 											if next_gen_ptr != ptr::null_mut() {
-												BitTrie::insert(next_gen_ptr, key, val);
+												BitTrie::insert(next_gen_ptr, key, val, tid, update);
 											} else {
 												let next_gen_node = BitTrie::new_gen_entry(hasher);
 												match p.compare_exchange(ptr::null_mut(), 
 													               next_gen_node, 
 													               Ordering::SeqCst, 
 													               Ordering::SeqCst) {
-													Ok(_) => { BitTrie::insert(next_gen_node, key, val); },
-													Err(p) => { BitTrie::insert(p, key, val); }
+													Ok(_) => { BitTrie::insert(next_gen_node, key, val, tid, update); },
+													Err(p) => { BitTrie::insert(p, key, val, tid, update); }
 												}
 											}
 										}
