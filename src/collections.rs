@@ -70,7 +70,7 @@ impl<T: Debug> BitTrie<T> {
 		))
 	}
 
-	fn find(trie:*mut BitTrie<T>, key:String) -> Option<&'static shared::Shared<Container<T>>> {
+	fn find(trie:*mut BitTrie<T>, key:&String) -> Option<&'static shared::Shared<Container<T>>> {
 		unsafe {
 			match trie.as_ref() {
 				Some(r) => match r {
@@ -104,7 +104,7 @@ impl<T: Debug> BitTrie<T> {
 						match cur_ptr.as_ref() {
 							Some(ritem) => match ritem {
 								BitTrie::Item(k, v, p) => {
-									if *k == key {
+									if k == key {
 										return Some(&v);
 									} else {
 										// check for collision, proceed
@@ -132,7 +132,7 @@ impl<T: Debug> BitTrie<T> {
 		}
 	}
 	
-    fn insert(trie: *mut BitTrie<T>, key:String, val:Container<T>, tid:usize, update:bool) {
+    fn insert(trie: *mut BitTrie<T>, key:&String, val:Container<T>, tid:usize, update:bool) {
 		unsafe {
 		match trie.as_ref() {
 			Some(r) => {
@@ -220,7 +220,7 @@ impl<T: Debug> BitTrie<T> {
 							Some(rcolls) => {
 								match rcolls {
 									BitTrie::Item(k, v, p) => {
-										if k == &key {
+										if k == key {
 											if update {
 												v.write(shared::TimePtr::make(val), tid);
 											}
@@ -283,16 +283,16 @@ mod tests {
     	let value = Container::new_list(1);
     	let inner_value = Container::Val(10);
     	value.set_list(0, inner_value, 0);
-    	BitTrie::insert(base, key.clone(), value, 0, false);
+    	BitTrie::insert(base, &key, value, 0, false);
     	unsafe {
-	    	match BitTrie::find(base, key.clone()) {
+	    	match BitTrie::find(base, &key) {
 	    		Some(rshared) => match rshared.read(0).as_ref() {
 	    			Some(readr) => {
 	    				assert_eq!(*readr.0.get_list(0, 0).unwrap().value(), 10);
 	    			},
-	    			None => panic!("Expected readable ptr for key: {:?}, got nullptr", key.clone())
+	    			None => panic!("Expected readable ptr for key: {:?}, got nullptr", &key)
 	    		},
-	    		None => panic!("Tried to insert {:?}, was not found", key.clone())
+	    		None => panic!("Tried to insert {:?}, was not found", &key)
 	    	}
     	}
     }
