@@ -70,7 +70,7 @@ impl<T: Debug> BitTrie<T> {
 		))
 	}
 
-	fn find(trie:*mut BitTrie<T>, key:String, tid:usize) -> Option<&shared::Shared<Container<T>>> {
+	fn find(trie:*mut BitTrie<T>, key:String) -> Option<&'static shared::Shared<Container<T>>> {
 		unsafe {
 			match trie.as_ref() {
 				Some(r) => match r {
@@ -82,6 +82,47 @@ impl<T: Debug> BitTrie<T> {
 						if slot1_ptr == ptr::null_mut() {
 							return None;
 						}
+						cur_ptr = slot1_ptr;
+						for i in 1..64 {
+							match cur_ptr.as_ref() {
+								Some(rp) => match rp {
+									BitTrie::Connect(cchilds) => {
+										let slotc = &cchilds[((hash_seq >> i) & 1) as usize];
+										let slotc_ptr = slotc.load(Ordering::SeqCst);
+										if slotc_ptr == ptr::null_mut() {
+											return None;
+										}
+										cur_ptr = slotc_ptr;
+									},
+									BitTrie::Item(_, _, _) => panic!("Expected connect node, but found Item: {:?}", rp),
+									BitTrie::Entry(_, _) => panic!("Expected connect node, but found entry {:?}", rp)
+								},
+								None => { return None; }
+							}
+						}
+						// ok we are at the item node now
+						match cur_ptr.as_ref() {
+							Some(ritem) => match ritem {
+								BitTrie::Item(k, v, p) => {
+									if *k == key {
+										return Some(&v);
+									} else {
+										// check for collision, proceed
+										let next_gen_ptr = p.load(Ordering::SeqCst);
+										if next_gen_ptr == ptr::null_mut() {
+											// not yet present
+											return None;
+										} else {
+											return BitTrie::find(next_gen_ptr, key);
+										}
+									}
+								},
+								BitTrie::Connect(_) => panic!("Expected item node but found connect: {:?}", ritem),
+								BitTrie::Entry(_, _) => panic!("Expected item node but found entry: {:?}", ritem)
+							},
+							None => { return None; }
+						}
+
 					},
 					BitTrie::Connect(_) => panic!("Attempted to call find on Connect node: {:?}", r),
 					BitTrie::Item(_, _, _) => panic!("Attempted to call find on Item node: {:?}", r)
@@ -90,8 +131,8 @@ impl<T: Debug> BitTrie<T> {
 			}
 		}
 	}
-
-	fn insert(trie: *mut BitTrie<T>, key:String, val:Container<T>, tid:usize, update:bool) {
+	
+    fn insert(trie: *mut BitTrie<T>, key:String, val:Container<T>, tid:usize, update:bool) {
 		unsafe {
 		match trie.as_ref() {
 			Some(r) => {
@@ -117,14 +158,14 @@ impl<T: Debug> BitTrie<T> {
 							match cur_ptr.as_ref() {
 								Some(rcon) => {
 									match rcon {
-										BitTrie::Connect(childs) => {
-											let slotc = &childs[((hash_seq >> i) & 1) as usize];
+										BitTrie::Connect(cchilds) => {
+											let slotc = &cchilds[((hash_seq >> i) & 1) as usize];
 											let slotc_ptr = slotc.load(Ordering::SeqCst);
 											if slotc_ptr != ptr::null_mut() {
 												cur_ptr = slotc_ptr;
 											} else {
 												let to_put = BitTrie::new_connect();
-												match slot1.compare_exchange(ptr::null_mut(), to_put, Ordering::SeqCst, Ordering::SeqCst) {
+												match slotc.compare_exchange(ptr::null_mut(), to_put, Ordering::SeqCst, Ordering::SeqCst) {
 													Ok(_) => cur_ptr = to_put,
 													Err(p) => {
 														drop(Box::from_raw(to_put));
@@ -144,8 +185,8 @@ impl<T: Debug> BitTrie<T> {
 						match cur_ptr.as_ref() {
 							Some(rlast) => {
 								match rlast {
-									BitTrie::Connect(childs) => {
-										let slotl = &childs[((hash_seq >> 63) & 1) as usize];
+									BitTrie::Connect(cchilds) => {
+										let slotl = &cchilds[((hash_seq >> 63) & 1) as usize];
 										let slotl_ptr = slotl.load(Ordering::SeqCst);
 										if slotl_ptr != ptr::null_mut() {
 											// item node is present , collision ?
@@ -232,5 +273,27 @@ mod tests {
     	let hs2 = hs.evolve();
     	let hash2 = hs2.hash(s.as_bytes());
     	assert!(hash1 != hash2);
+    }
+
+    #[test]
+    fn bittrie_insert_find_works() {
+    	shared::set_epoch();
+    	let base = BitTrie::new_entry();
+    	let key = String::from("Hello!");
+    	let value = Container::new_list(1);
+    	let inner_value = Container::Val(10);
+    	value.set_list(0, inner_value, 0);
+    	BitTrie::insert(base, key.clone(), value, 0, false);
+    	unsafe {
+	    	match BitTrie::find(base, key.clone()) {
+	    		Some(rshared) => match rshared.read(0).as_ref() {
+	    			Some(readr) => {
+	    				assert_eq!(*readr.0.get_list(0, 0).unwrap().value(), 10);
+	    			},
+	    			None => panic!("Expected readable ptr for key: {:?}, got nullptr", key.clone())
+	    		},
+	    		None => panic!("Tried to insert {:?}, was not found", key.clone())
+	    	}
+    	}
     }
 }
