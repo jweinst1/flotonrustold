@@ -258,6 +258,113 @@ impl<T: Debug> BitTrie<T> {
 	}
 }
 
+#[derive(Debug)]
+enum HashTree<T> {
+	Table(HashScheme, Vec<AtomicPtr<HashTree<T>>>),
+	Item(String,  shared::Shared<Container<T>>, AtomicPtr<HashTree<T>>)
+}
+
+impl<T: Debug> HashTree<T> {
+	fn new_table(hasher:HashScheme, slot_count:usize) -> HashTree<T> {
+		let mut slots = vec![];
+		slots.reserve(slot_count);
+		for _ in 0..slot_count {
+			slots.push(AtomicPtr::new(ptr::null_mut()));
+		}
+		HashTree::Table(hasher, slots)
+	}
+
+	fn value(&self) -> &shared::Shared<Container<T>> {
+		match self {
+			HashTree::Item(k, v, p) => return &v,
+			HashTree::Table(_, _) => panic!("Atttempted to vall value() on {:?}", self)
+		}
+	}
+
+	fn new_item(key:&String) -> *mut HashTree<T> {
+		Box::into_raw(Box::new(HashTree::Item(key.clone(), shared::Shared::new(), AtomicPtr::new(ptr::null_mut()))))
+	}
+
+	fn insert(&self, key:&String) -> &shared::Shared<Container<T>> {
+		match self {
+			HashTree::Table(hasher, slots) => {
+				let hashed_idx = hasher.hash(key.as_bytes()) % (slots.len() as u64);
+				let insert_slot = &slots[hashed_idx as usize];
+				let slot_ptr = insert_slot.load(Ordering::SeqCst);
+				if slot_ptr != ptr::null_mut() {
+					unsafe {
+						let slot_ref = slot_ptr.as_ref().unwrap();
+						match slot_ref {
+							HashTree::Item(k, v, p) => {
+								if k == key {
+									return v;
+								} else {
+									// collission
+									match p.load(Ordering::SeqCst).as_ref() {
+										Some(coll_ref) => return coll_ref.insert(key),
+										None => {
+											let coll_table = Box::into_raw(
+												                Box::new(HashTree::new_table(hasher.evolve(), slots.len())
+												                	)
+												                );
+											match p.compare_exchange(ptr::null_mut(), coll_table, Ordering::SeqCst, Ordering::SeqCst) {
+												Ok(_) => return coll_table.as_ref().unwrap().insert(key),
+												Err(p_seen) => {
+												    drop(Box::from_raw(coll_table)); 
+													return p_seen.as_ref().unwrap().insert(key); 
+												}
+											}
+										}
+									}
+								}
+							},
+							HashTree::Table(_, _) => panic!("Expected item in slot, found table: {:?}", slot_ref)
+						}
+					}
+				}
+				// is nullptr, new slot
+				let item_slot = HashTree::new_item(key);
+				match insert_slot.compare_exchange(ptr::null_mut(), item_slot, Ordering::SeqCst, Ordering::SeqCst) {
+					Ok(_) => unsafe {
+						return item_slot.as_ref().unwrap().value();
+					},
+					Err(p_seen) => unsafe {
+						drop(Box::from_raw(item_slot));
+						let coll_ref = p_seen.as_ref().unwrap();
+						match coll_ref {
+							HashTree::Item(k, v, p) => {
+								if k == key {
+									// correct slot
+									return &v;
+								} else {
+									match p.load(Ordering::SeqCst).as_ref() {
+										Some(coll_ref) => return coll_ref.insert(key),
+										None => {
+											let coll_table = Box::into_raw(
+												                Box::new(HashTree::new_table(hasher.evolve(), slots.len())
+												                	)
+												                );
+											match p.compare_exchange(ptr::null_mut(), coll_table, Ordering::SeqCst, Ordering::SeqCst) {
+												Ok(_) => return coll_table.as_ref().unwrap().insert(key),
+												Err(p_seen) => {
+												    drop(Box::from_raw(coll_table)); 
+													return p_seen.as_ref().unwrap().insert(key); 
+												}
+											}
+										}
+									}
+								}
+							},
+							HashTree::Table(_, _) => panic!("Expected Item slot, but found: {:?}", coll_ref)
+						}
+					}
+				}
+			},
+			HashTree::Item(_, _, _) => panic!("Attempted to call insert on item : {:?}", self)
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
