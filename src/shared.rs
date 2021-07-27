@@ -1,11 +1,9 @@
 use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::{thread, ptr};
 use std::time::{Duration, Instant};
-use std::mem::{self, MaybeUninit};
 use std::convert::TryFrom;
+use crate::epoch::{set_epoch, check_time};
 
-// Note, must be initialized from single threaded context
-static mut MONOTONIC_EPOCH:MaybeUninit<Instant> = MaybeUninit::<Instant>::uninit();
 static FREE_LIST_DEFAULT:u32 = 10;
 static FREE_LIST_LIM:AtomicU32 = AtomicU32::new(FREE_LIST_DEFAULT);
 static THREAD_COUNT_DEFAULT:usize = 8;
@@ -21,22 +19,6 @@ pub fn set_thread_count(count:usize) {
 
 pub fn set_free_list_lim(limit:u32) {
     FREE_LIST_LIM.store(limit, Ordering::SeqCst);
-}
-
-pub fn set_epoch() {
-    unsafe {
-        MONOTONIC_EPOCH.as_mut_ptr().write(Instant::now());
-    }
-}
-
-pub fn check_time() -> u64 {
-	unsafe {
-        // todo, make precision configurable
-		match u64::try_from(MONOTONIC_EPOCH.assume_init().elapsed().as_nanos()) {
-			Ok(v) => v,
-			Err(e) => panic!("Could not convert monotonic tick to u64, err: {:?}", e)
-		}
-	}
 }
 
 #[derive(Debug)]

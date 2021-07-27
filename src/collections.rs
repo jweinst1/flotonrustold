@@ -3,9 +3,9 @@ use std::ptr;
 use std::fmt::Debug;
 use std::time::{Instant};
 use std::convert::TryFrom;
-use std::mem::{self, MaybeUninit};
 use crate::shared;
 use crate::containers::Container;
+use crate::epoch::{set_epoch, check_time};
 
 static DEFAULT_HASH_BASE:u64 = 0x5331;
 
@@ -22,7 +22,7 @@ impl HashScheme {
 	}
 
 	fn evolve(&self) -> HashScheme {
-		let tick = shared::check_time();
+		let tick = check_time();
 		HashScheme(self.0 ^ tick)
 	}
 }
@@ -276,13 +276,44 @@ impl<T: Debug> HashTree<T> {
 
 	fn value(&self) -> &shared::Shared<Container<T>> {
 		match self {
-			HashTree::Item(k, v, p) => return &v,
+			HashTree::Item(_, v, _) => return &v,
 			HashTree::Table(_, _) => panic!("Atttempted to vall value() on {:?}", self)
 		}
 	}
 
 	fn new_item(key:&String) -> *mut HashTree<T> {
 		Box::into_raw(Box::new(HashTree::Item(key.clone(), shared::Shared::new(), AtomicPtr::new(ptr::null_mut()))))
+	}
+
+	fn find(&self, key:&String) -> Option<&shared::Shared<Container<T>>> {
+		match self {
+			HashTree::Table(hasher, slots) => {
+				let hashed_idx = hasher.hash(key.as_bytes()) % (slots.len() as u64);
+				let find_slot = &slots[hashed_idx as usize];
+				let slot_ptr = find_slot.load(Ordering::SeqCst);
+				if slot_ptr == ptr::null_mut() {
+					return None;
+				}
+				let slot_ref = unsafe { slot_ptr.as_ref().unwrap() };
+				match slot_ref {
+					HashTree::Item(k, v, p) => {
+						if k == key {
+							return Some(&v);
+						}
+						unsafe {
+							match p.load(Ordering::SeqCst).as_ref() {
+								Some(coll_ref) => {
+									return coll_ref.find(key);
+								},
+								None => { return None; }
+							}
+						}
+					},
+					HashTree::Table(_, _) => panic!("Expected to find Item, got Table: {:?}", slot_ref)
+				}		
+			},
+			HashTree::Item(_, _, _) => panic!("Expected Table, got Item: {:?}", self)
+		}
 	}
 
 	fn insert(&self, key:&String) -> &shared::Shared<Container<T>> {
@@ -373,7 +404,7 @@ mod tests {
 
     #[test]
     fn evolve_hash_works() {
-    	shared::set_epoch();
+    	set_epoch();
     	let hs = HashScheme(DEFAULT_HASH_BASE);
     	let s = String::from("Hello!");
     	let hash1 = hs.hash(s.as_bytes());
@@ -384,7 +415,7 @@ mod tests {
 
     #[test]
     fn bittrie_insert_find_works() {
-    	shared::set_epoch();
+    	set_epoch();
     	let base = BitTrie::new_entry();
     	let key = String::from("Hello!");
     	let value = Container::new_list(1);
