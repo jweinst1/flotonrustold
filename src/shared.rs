@@ -214,16 +214,6 @@ mod tests {
     struct TestType(u32);
 
     #[test]
-    fn epoch_timer_works() {
-        set_epoch();
-        let t1 = check_time();
-        let t2 = check_time();
-        if !(t1 < t2) {
-            panic!("monotonic t1:{:?} is not less than t2:{:?}", t1, t2);
-        }
-    }
-
-    #[test]
     fn freenode_works() {
         set_epoch();
         let tptr = TimePtr::make(30);

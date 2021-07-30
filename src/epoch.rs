@@ -20,3 +20,19 @@ pub fn check_time() -> u64 {
 		}
 	}
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn epoch_timer_works() {
+        set_epoch();
+        let t1 = check_time();
+        let t2 = check_time();
+        if !(t1 < t2) {
+            panic!("monotonic t1:{:?} is not less than t2:{:?}", t1, t2);
+        }
+    }
+}
