@@ -3,6 +3,7 @@ use std::ptr;
 use std::fmt::Debug;
 use std::convert::TryFrom;
 use crate::epoch::{set_epoch, check_time};
+use crate::traits::NewType;
 
 static DEFAULT_HASH_BASE:u64 = 0x5331;
 
@@ -23,23 +24,19 @@ impl HashScheme {
 		HashScheme(self.0 ^ tick)
 	}
 
-	fn default() -> HashScheme {
+	pub fn default() -> HashScheme {
 		HashScheme(DEFAULT_HASH_BASE)
 	}
 }
 
-pub trait HashTreeType {
-	fn new() -> Self;
-}
-
 #[derive(Debug)]
-enum HashTree<T> {
+pub enum HashTree<T> {
 	Table(HashScheme, Vec<AtomicPtr<HashTree<T>>>),
 	Item(String,  T, AtomicPtr<HashTree<T>>)
 }
 
-impl<T: Debug + HashTreeType> HashTree<T> {
-	fn new_table(hasher:HashScheme, slot_count:usize) -> HashTree<T> {
+impl<T: Debug + NewType> HashTree<T> {
+	pub fn new_table(hasher:HashScheme, slot_count:usize) -> HashTree<T> {
 		let mut slots = vec![];
 		slots.reserve(slot_count);
 		for _ in 0..slot_count {
@@ -48,18 +45,18 @@ impl<T: Debug + HashTreeType> HashTree<T> {
 		HashTree::Table(hasher, slots)
 	}
 
-	fn value(&self) -> &T {
+	pub fn value(&self) -> &T {
 		match self {
 			HashTree::Item(_, v, _) => return &v,
 			HashTree::Table(_, _) => panic!("Atttempted to vall value() on {:?}", self)
 		}
 	}
 
-	fn new_item(key:&String) -> *mut HashTree<T> {
+	pub fn new_item(key:&String) -> *mut HashTree<T> {
 		Box::into_raw(Box::new(HashTree::Item(key.clone(), T::new(), AtomicPtr::new(ptr::null_mut()))))
 	}
 
-	fn find(&self, key:&String) -> Option<&T> {
+	pub fn find(&self, key:&String) -> Option<&T> {
 		match self {
 			HashTree::Table(hasher, slots) => {
 				let hashed_idx = hasher.hash(key.as_bytes()) % (slots.len() as u64);
@@ -90,7 +87,7 @@ impl<T: Debug + HashTreeType> HashTree<T> {
 		}
 	}
 
-	fn insert(&self, key:&String) -> &T {
+	pub fn insert(&self, key:&String) -> &T {
 		match self {
 			HashTree::Table(hasher, slots) => {
 				let hashed_idx = hasher.hash(key.as_bytes()) % (slots.len() as u64);
@@ -190,7 +187,7 @@ mod tests {
     	}
     }
 
-    impl HashTreeType for TestType {
+    impl NewType for TestType {
     	fn new() -> Self {
     		TestType(AtomicU32::new(0))
     	}
@@ -208,14 +205,44 @@ mod tests {
     }
 
     #[test]
-    fn hashtree_insert_works() {
+    fn insert_works() {
     	set_epoch();
-    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 50);
+    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
     	let key = String::from("Hello!");
     	let v = tree.insert(&key);
     	v.set(6);
     	let v2 = tree.insert(&key);
     	assert_eq!(v.get(), v2.get());
     	assert_eq!(v2.get(), 6);
+    }
+
+    #[test]
+    fn find_basic_works() {
+    	set_epoch();
+    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
+    	let key = String::from("Hello!");
+    	let v = tree.insert(&key);
+    	v.set(5);
+    	let found = tree.find(&key).unwrap();
+    	assert_eq!(v.get(), found.get());
+    	assert_eq!(found.get(), 5);
+    }
+
+    #[test]
+    fn find_multi_works() {
+    	set_epoch();
+    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
+    	let key1 = String::from("Hello!");
+    	let key2 = String::from("Hell3!");
+    	let key3 = String::from("Hell4!");
+    	let v1 = tree.insert(&key1);
+    	let v2 = tree.insert(&key2);
+    	let v3 = tree.insert(&key3);
+    	v1.set(1);
+    	v2.set(2);
+    	v3.set(3);
+    	assert_eq!(v1.get(), tree.find(&key1).unwrap().get());
+    	assert_eq!(v2.get(), tree.find(&key2).unwrap().get());
+    	assert_eq!(v3.get(), tree.find(&key3).unwrap().get());
     }
 }

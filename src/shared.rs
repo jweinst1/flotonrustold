@@ -3,6 +3,7 @@ use std::{thread, ptr};
 use std::time::{Duration, Instant};
 use std::convert::TryFrom;
 use crate::epoch::{set_epoch, check_time};
+use crate::traits::NewType;
 
 static FREE_LIST_DEFAULT:u32 = 10;
 static FREE_LIST_LIM:AtomicU32 = AtomicU32::new(FREE_LIST_DEFAULT);
@@ -105,8 +106,8 @@ pub struct Shared<T> {
     cur_ptr:AtomicPtr<TimePtr<T>>
 }
 
-impl<T> Shared<T> {
-    pub fn new() -> Shared<T> {
+impl<T> NewType for Shared<T> {
+    fn new() -> Shared<T> {
         let mut ts_vec = vec![];
         let tc = get_thread_count();
         for _ in 0..tc {
@@ -114,6 +115,9 @@ impl<T> Shared<T> {
         }
         Shared{time_keeps:ts_vec, cur_ptr:AtomicPtr::new(ptr::null_mut())}
     }
+}
+
+impl<T> Shared<T> {
 
     pub fn new_val(val:T) -> Shared<T> {
         let made = Shared::new();
