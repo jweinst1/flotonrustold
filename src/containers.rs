@@ -17,6 +17,13 @@ impl<T: Debug> Container<T> {
 		Container::Map(HashTree::new_table(HashScheme::default(), size))
 	}
 
+    pub fn value(&self) -> &T {
+        match self {
+            Container::Val(v) => &v,
+            Container::Map(m) => panic!("Called value() on map: {:?}", m)
+        }
+    }
+
 	pub fn set_map(&self, key:&String, val:Container<T>, tid:usize) {
 		match self {
 			Container::Val(v) => panic!("Expected List, got Val({:?})", v),
@@ -53,8 +60,51 @@ mod tests {
     struct TestType(u32);
 
     #[test]
-    fn container_new_list_works() {
+    fn set_map_works() {
     	set_epoch();
+        let map = Container::new_map(20);
+        let key = String::from("test");
+        let val = Container::Val(TestType(10));
+        map.set_map(&key, val, 0);
+        match map {
+            Container::Map(m) => match m.find(&key) {
+                Some(r) => unsafe { match r.read(0).as_ref() {
+                    Some(rval) => assert_eq!(rval.0.value().0, 10),
+                    None => panic!("Unexpected nullptr from shared loc {:?}", r)
+                 } },
+                None => panic!("Expected map {:?} to contain value for key {:?}", m, key)
+            }
+            Container::Val(v) => panic!("Unexpected Value({:?})", v)
+        }
+    }
 
+    #[test]
+    fn get_map_shared_works() {
+        set_epoch();
+        let map = Container::new_map(20);
+        let key = String::from("test");
+        let val = Container::Val(TestType(10));
+        map.set_map(&key, val, 0);
+        match map.get_map_shared(&key) { Some(rsh) => unsafe {  
+            match rsh.read(0).as_ref() { 
+                Some(rval) =>  assert_eq!(rval.0.value().0, 10), 
+                None => panic!("Unexpected nullptr from shared loc {:?}", rsh) 
+            }
+            }, 
+            None => panic!("key: {:?} not found in map {:?}", key, map)
+        }
+    }
+
+    #[test]
+    fn get_map_works() {
+        set_epoch();
+        let map = Container::new_map(20);
+        let key = String::from("test");
+        let val = Container::Val(TestType(10));
+        map.set_map(&key, val, 0);
+        match map.get_map(&key, 0) {
+            Some(rv) => assert_eq!(rv.value().0, 10),
+            None => panic!("key: {:?} not found in map {:?}", key, map)
+        } 
     }
 }
