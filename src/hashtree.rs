@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU32, Ordering};
 use std::ptr;
 use std::fmt::Debug;
+use std::ops::Deref;
 use std::convert::TryFrom;
 use crate::epoch::{set_epoch, check_time};
 use crate::traits::NewType;
@@ -32,7 +33,7 @@ impl HashScheme {
 #[derive(Debug)]
 pub enum HashTree<T> {
 	Table(HashScheme, Vec<AtomicPtr<HashTree<T>>>),
-	Item(String,  T, AtomicPtr<HashTree<T>>)
+	Item(Box<[u8]>,  T, AtomicPtr<HashTree<T>>)
 }
 
 impl<T: Debug + NewType> HashTree<T> {
@@ -52,14 +53,18 @@ impl<T: Debug + NewType> HashTree<T> {
 		}
 	}
 
-	pub fn new_item(key:&String) -> *mut HashTree<T> {
-		Box::into_raw(Box::new(HashTree::Item(key.clone(), T::new(), AtomicPtr::new(ptr::null_mut()))))
+	pub fn new_item(key:&[u8]) -> *mut HashTree<T> {
+		Box::into_raw(Box::new(HashTree::Item(key.into(), T::new(), AtomicPtr::new(ptr::null_mut()))))
 	}
 
-	pub fn find(&self, key:&String) -> Option<&T> {
+	pub fn find_string(&self, key:&str) -> Option<&T> {
+		self.find_bytes(key.as_bytes())
+	}
+
+	pub fn find_bytes(&self, key:&[u8]) -> Option<&T> {
 		match self {
 			HashTree::Table(hasher, slots) => {
-				let hashed_idx = hasher.hash(key.as_bytes()) % (slots.len() as u64);
+				let hashed_idx = hasher.hash(key) % (slots.len() as u64);
 				let find_slot = &slots[hashed_idx as usize];
 				let slot_ptr = find_slot.load(Ordering::SeqCst);
 				if slot_ptr == ptr::null_mut() {
@@ -68,13 +73,13 @@ impl<T: Debug + NewType> HashTree<T> {
 				let slot_ref = unsafe { slot_ptr.as_ref().unwrap() };
 				match slot_ref {
 					HashTree::Item(k, v, p) => {
-						if k == key {
+						if k.deref() == key {
 							return Some(v);
 						}
 						unsafe {
 							match p.load(Ordering::SeqCst).as_ref() {
 								Some(coll_ref) => {
-									return coll_ref.find(key);
+									return coll_ref.find_bytes(key);
 								},
 								None => { return None; }
 							}
@@ -87,10 +92,14 @@ impl<T: Debug + NewType> HashTree<T> {
 		}
 	}
 
-	pub fn insert(&self, key:&String) -> &T {
+	pub fn insert_string(&self, key:&str) -> &T {
+		self.insert_bytes(key.as_bytes())
+	}
+
+	pub fn insert_bytes(&self, key:&[u8]) -> &T {
 		match self {
 			HashTree::Table(hasher, slots) => {
-				let hashed_idx = hasher.hash(key.as_bytes()) % (slots.len() as u64);
+				let hashed_idx = hasher.hash(key) % (slots.len() as u64);
 				let insert_slot = &slots[hashed_idx as usize];
 				let slot_ptr = insert_slot.load(Ordering::SeqCst);
 				if slot_ptr != ptr::null_mut() {
@@ -98,22 +107,22 @@ impl<T: Debug + NewType> HashTree<T> {
 						let slot_ref = slot_ptr.as_ref().unwrap();
 						match slot_ref {
 							HashTree::Item(k, v, p) => {
-								if k == key {
+								if k.deref() == key {
 									return v;
 								} else {
 									// collission
 									match p.load(Ordering::SeqCst).as_ref() {
-										Some(coll_ref) => return coll_ref.insert(key),
+										Some(coll_ref) => return coll_ref.insert_bytes(key),
 										None => {
 											let coll_table = Box::into_raw(
 												                Box::new(HashTree::new_table(hasher.evolve(), slots.len())
 												                	)
 												                );
 											match p.compare_exchange(ptr::null_mut(), coll_table, Ordering::SeqCst, Ordering::SeqCst) {
-												Ok(_) => return coll_table.as_ref().unwrap().insert(key),
+												Ok(_) => return coll_table.as_ref().unwrap().insert_bytes(key),
 												Err(p_seen) => {
 												    drop(Box::from_raw(coll_table)); 
-													return p_seen.as_ref().unwrap().insert(key); 
+													return p_seen.as_ref().unwrap().insert_bytes(key); 
 												}
 											}
 										}
@@ -135,22 +144,22 @@ impl<T: Debug + NewType> HashTree<T> {
 						let coll_ref = p_seen.as_ref().unwrap();
 						match coll_ref {
 							HashTree::Item(k, v, p) => {
-								if k == key {
+								if k.deref() == key {
 									// correct slot
 									return &v;
 								} else {
 									match p.load(Ordering::SeqCst).as_ref() {
-										Some(coll_ref) => return coll_ref.insert(key),
+										Some(coll_ref) => return coll_ref.insert_bytes(key),
 										None => {
 											let coll_table = Box::into_raw(
 												                Box::new(HashTree::new_table(hasher.evolve(), slots.len())
 												                	)
 												                );
 											match p.compare_exchange(ptr::null_mut(), coll_table, Ordering::SeqCst, Ordering::SeqCst) {
-												Ok(_) => return coll_table.as_ref().unwrap().insert(key),
+												Ok(_) => return coll_table.as_ref().unwrap().insert_bytes(key),
 												Err(p_seen) => {
 												    drop(Box::from_raw(coll_table)); 
-													return p_seen.as_ref().unwrap().insert(key); 
+													return p_seen.as_ref().unwrap().insert_bytes(key); 
 												}
 											}
 										}
@@ -208,10 +217,10 @@ mod tests {
     fn insert_works() {
     	set_epoch();
     	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
-    	let key = String::from("Hello!");
-    	let v = tree.insert(&key);
+    	let key = "Hello!";
+    	let v = tree.insert_string(key);
     	v.set(6);
-    	let v2 = tree.insert(&key);
+    	let v2 = tree.insert_string(key);
     	assert_eq!(v.get(), v2.get());
     	assert_eq!(v2.get(), 6);
     }
@@ -220,10 +229,10 @@ mod tests {
     fn find_basic_works() {
     	set_epoch();
     	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
-    	let key = String::from("Hello!");
-    	let v = tree.insert(&key);
+    	let key = "Hello!";
+    	let v = tree.insert_string(key);
     	v.set(5);
-    	let found = tree.find(&key).unwrap();
+    	let found = tree.find_string(key).unwrap();
     	assert_eq!(v.get(), found.get());
     	assert_eq!(found.get(), 5);
     }
@@ -232,17 +241,17 @@ mod tests {
     fn find_multi_works() {
     	set_epoch();
     	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
-    	let key1 = String::from("Hello!");
-    	let key2 = String::from("Hell3!");
-    	let key3 = String::from("Hell4!");
-    	let v1 = tree.insert(&key1);
-    	let v2 = tree.insert(&key2);
-    	let v3 = tree.insert(&key3);
+    	let key1 = "Hello!";
+    	let key2 = "Hell3!";
+    	let key3 = "Hell4!";
+    	let v1 = tree.insert_string(key1);
+    	let v2 = tree.insert_string(key2);
+    	let v3 = tree.insert_string(key3);
     	v1.set(1);
     	v2.set(2);
     	v3.set(3);
-    	assert_eq!(v1.get(), tree.find(&key1).unwrap().get());
-    	assert_eq!(v2.get(), tree.find(&key2).unwrap().get());
-    	assert_eq!(v3.get(), tree.find(&key3).unwrap().get());
+    	assert_eq!(v1.get(), tree.find_string(key1).unwrap().get());
+    	assert_eq!(v2.get(), tree.find_string(key2).unwrap().get());
+    	assert_eq!(v3.get(), tree.find_string(key3).unwrap().get());
     }
 }

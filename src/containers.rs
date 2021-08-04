@@ -24,24 +24,24 @@ impl<T: Debug> Container<T> {
         }
     }
 
-	pub fn set_map(&self, key:&String, val:Container<T>, tid:usize) {
+	pub fn set_map(&self, key:&[u8], val:Container<T>, tid:usize) {
 		match self {
 			Container::Val(v) => panic!("Expected List, got Val({:?})", v),
-			Container::Map(m) => m.insert(key).write(TimePtr::make(val), tid)
+			Container::Map(m) => m.insert_bytes(key).write(TimePtr::make(val), tid)
 		}
 	}
 
-    pub fn get_map_shared(&self, key:&String) -> Option<&Shared<Container<T>>> {
+    pub fn get_map_shared(&self, key:&[u8]) -> Option<&Shared<Container<T>>> {
         match self {
             Container::Val(v) => panic!("Expected List, got Val({:?})", v),
-            Container::Map(m) => m.find(key)
+            Container::Map(m) => m.find_bytes(key)
         }
     }
 
-    pub fn get_map(&self, key:&String, tid:usize) -> Option<&Container<T>> {
+    pub fn get_map(&self, key:&[u8], tid:usize) -> Option<&Container<T>> {
         match self {
             Container::Val(v) => panic!("Expected List, got Val({:?})", v),
-            Container::Map(m) => match m.find(key) {
+            Container::Map(m) => match m.find_bytes(key) {
                 Some(refval) => unsafe { match refval.read(tid).as_ref() {
                     Some(r) => Some(&r.0),
                     None => None
@@ -63,11 +63,11 @@ mod tests {
     fn set_map_works() {
     	set_epoch();
         let map = Container::new_map(20);
-        let key = String::from("test");
+        let key = b"test";
         let val = Container::Val(TestType(10));
-        map.set_map(&key, val, 0);
+        map.set_map(key, val, 0);
         match map {
-            Container::Map(m) => match m.find(&key) {
+            Container::Map(m) => match m.find_bytes(key) {
                 Some(r) => unsafe { match r.read(0).as_ref() {
                     Some(rval) => assert_eq!(rval.0.value().0, 10),
                     None => panic!("Unexpected nullptr from shared loc {:?}", r)
@@ -82,10 +82,10 @@ mod tests {
     fn get_map_shared_works() {
         set_epoch();
         let map = Container::new_map(20);
-        let key = String::from("test");
+        let key = b"test";
         let val = Container::Val(TestType(10));
-        map.set_map(&key, val, 0);
-        match map.get_map_shared(&key) { Some(rsh) => unsafe {  
+        map.set_map(key, val, 0);
+        match map.get_map_shared(key) { Some(rsh) => unsafe {  
             match rsh.read(0).as_ref() { 
                 Some(rval) =>  assert_eq!(rval.0.value().0, 10), 
                 None => panic!("Unexpected nullptr from shared loc {:?}", rsh) 
@@ -99,10 +99,10 @@ mod tests {
     fn get_map_works() {
         set_epoch();
         let map = Container::new_map(20);
-        let key = String::from("test");
+        let key = b"test";
         let val = Container::Val(TestType(10));
-        map.set_map(&key, val, 0);
-        match map.get_map(&key, 0) {
+        map.set_map(key, val, 0);
+        match map.get_map(key, 0) {
             Some(rv) => assert_eq!(rv.value().0, 10),
             None => panic!("key: {:?} not found in map {:?}", key, map)
         } 
