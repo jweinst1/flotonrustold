@@ -1,5 +1,8 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::io::prelude::*;
+use crate::traits::*;
 
+#[derive(Debug)]
 pub enum Value {
 	Nothing,
 	Bool(bool),
@@ -13,6 +16,16 @@ impl Value {
 			Value::Bool(b) => *b,
 			Value::ABool(b) => b.load(Ordering::SeqCst)
 		}
+	}
+}
+
+impl OutPut for Value {
+	fn output_binary(&self, output:&mut Vec<u8>) {
+
+	}
+
+	fn output_text(&self, output:&mut Vec<u8>) {
+
 	}
 }
 
