@@ -4,7 +4,7 @@ use crate::traits::*;
 
 
 #[repr(u8)]
-enum ValueBinCode {
+pub enum ValueBinCode {
 	Nothing = 0,
 	Bool = 1,
 	ABool = 2
