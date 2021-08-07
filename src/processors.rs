@@ -2,12 +2,12 @@ use crate::values::Value;
 use crate::epoch::set_epoch;
 use crate::containers::Container;
 use crate::traits::*;
+use std::io::prelude::*;
 use std::fmt::Debug;
 
 /*
  * Run / process commands on containers 
  */
-
 
 
 fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>, tid:usize) {
@@ -23,7 +23,7 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 		}
 		*place += key_len;
 	}
-	// output
+	(*cur_map).value().output_binary(output);
 }
 
 pub fn run_cmd(cmd:&[u8], data:&Container<Value>, tid:usize) -> Vec<u8> {
@@ -39,4 +39,22 @@ pub fn run_cmd(cmd:&[u8], data:&Container<Value>, tid:usize) -> Vec<u8> {
 			_ => panic!("Unexpected cmd byte {:?}", cmd[i])
 		}
 	}
+}
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn returnkv_works() {
+    	let cmd_buf = Vec::<u8>::new();
+    	set_epoch();
+    	let tid = 0;
+    	let key = [22, 33, 31, 4];
+    	let val = Value::Bool(false);
+    	let cont = Container::<Value>::new_map(50);
+    	cont.set_map(&key[..], Container::Val(val), tid);
+    	let out = run_cmd()
+    }
 }
