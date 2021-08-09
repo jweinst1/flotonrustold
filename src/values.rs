@@ -1,14 +1,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::io::prelude::*;
+use crate::constants;
 use crate::traits::*;
-
-
-#[repr(u8)]
-pub enum ValueBinCode {
-	Nothing = 0,
-	Bool = 1,
-	ABool = 2
-}
 
 #[derive(Debug)]
 pub enum Value {
@@ -27,18 +20,40 @@ impl Value {
 	}
 }
 
-impl OutPut for Value {
+impl InPutOutPut for Value {
 	fn output_binary(&self, output:&mut Vec<u8>) {
 		match self {
-			Value::Nothing => output.push(ValueBinCode::Nothing as u8),
+			Value::Nothing => output.push(constants::VBIN_NOTHING),
 			Value::Bool(b) => {
-				output.push(ValueBinCode::Bool as u8);
+				output.push(constants::VBIN_BOOL);
 				output.push(*b as u8);
 			},
 			Value::ABool(b) => {
-				output.push(ValueBinCode::ABool as u8);
+				output.push(constants::VBIN_ABOOL);
 				output.push(b.load(Ordering::SeqCst) as u8);
 			}
+		}
+	}
+
+	fn input_binary(input:&[u8], place:&mut usize) -> Self {
+		match input[*place] {
+			constants::VBIN_NOTHING => {
+				*place += 1;
+				Value::Nothing
+			},
+			constants::VBIN_BOOL => {
+				*place += 1;
+				let to_ret = Value::Bool(*place != 0);
+				*place += 1;
+				to_ret
+			},
+			constants::VBIN_ABOOL => {
+				*place += 1;
+				let to_ret = Value::ABool(AtomicBool::new(*place != 0));
+				*place += 1;
+				to_ret		
+			},
+			_ => panic!("Unknown input byte value, {:?}", input[*place])
 		}
 	}
 }
@@ -64,9 +79,9 @@ mod tests {
     	let mut out = Vec::<u8>::new();
     	a.output_binary(&mut out);
     	b.output_binary(&mut out);
-    	assert_eq!(out[0], ValueBinCode::Bool as u8);
+    	assert_eq!(out[0], constants::VBIN_BOOL);
     	assert_eq!(out[1], 1);
-    	assert_eq!(out[2], ValueBinCode::ABool as u8);
+    	assert_eq!(out[2], constants::VBIN_ABOOL);
     	assert_eq!(out[3], 1);
     }
 }
