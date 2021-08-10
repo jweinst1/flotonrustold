@@ -3,7 +3,6 @@ use std::ptr;
 use std::fmt::Debug;
 use crate::shared::*;
 use crate::epoch::set_epoch;
-use crate::traits::NewType;
 use crate::hashtree::{HashTree, HashScheme};
 
 #[derive(Debug)]
@@ -26,21 +25,45 @@ impl<T: Debug> Container<T> {
 
 	pub fn set_map(&self, key:&[u8], val:Container<T>, tid:usize) {
 		match self {
-			Container::Val(v) => panic!("Expected List, got Val({:?})", v),
+			Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
 			Container::Map(m) => m.insert_bytes(key).write(TimePtr::make(val), tid)
 		}
 	}
 
+    pub fn create_set_map(&self, key:&[u8], tid:usize, slots_size:usize) -> &Container<T> {
+        match self {
+            Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
+            Container::Map(m) => {
+                let location = m.insert_bytes(key);
+                // first, check if map already exists
+                unsafe {
+                    match location.read(tid).as_ref() {
+                        Some(loc_r) => match loc_r.0 {
+                            Container::Map(_) => return &loc_r.0,
+                            Container::Val(_) => () // can overwrite a val, proceed.
+                        },
+                        None => () // proceed to write
+                    }
+                }
+                location.write(TimePtr::make(Container::new_map(slots_size)), tid);
+                // Do another read. This helps get the most up to date value.
+                unsafe {
+                    &location.read(tid).as_ref().unwrap().0
+                }
+            }
+        }
+    }
+
     pub fn get_map_shared(&self, key:&[u8]) -> Option<&Shared<Container<T>>> {
         match self {
-            Container::Val(v) => panic!("Expected List, got Val({:?})", v),
+            Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
             Container::Map(m) => m.find_bytes(key)
         }
     }
 
     pub fn get_map(&self, key:&[u8], tid:usize) -> Option<&Container<T>> {
         match self {
-            Container::Val(v) => panic!("Expected List, got Val({:?})", v),
+            Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
             Container::Map(m) => match m.find_bytes(key) {
                 Some(refval) => unsafe { match refval.read(tid).as_ref() {
                     Some(r) => Some(&r.0),
@@ -106,5 +129,25 @@ mod tests {
             Some(rv) => assert_eq!(rv.value().0, 10),
             None => panic!("key: {:?} not found in map {:?}", key, map)
         } 
+    }
+
+    #[test]
+    fn create_set_map_works() {
+        set_epoch();
+        let map = Container::new_map(20);
+        let key = b"test";
+        let key2 = b"test2";
+        let val = Container::Val(TestType(10));
+        let created = map.create_set_map(key, 0, 30);
+        match created {
+            Container::Val(v) => panic!("Expected Map to be returned, got Val({:?})", v),
+            Container::Map(_) => () // This is expected
+        }
+        created.set_map(key2, val, 0);
+        // test for overwrite
+        match map.create_set_map(key, 0, 30).get_map(key2, 0) {
+            Some(val_c) => assert_eq!(val_c.value().0, 10),
+            None => panic!("Expected to find key {:?} nested in key {:?}", key2, key)
+        }
     }
 }

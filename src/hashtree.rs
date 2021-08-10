@@ -49,7 +49,7 @@ impl<T: Debug + NewType> HashTree<T> {
 	pub fn value(&self) -> &T {
 		match self {
 			HashTree::Item(_, v, _) => return &v,
-			HashTree::Table(_, _) => panic!("Atttempted to vall value() on {:?}", self)
+			HashTree::Table(_, _) => panic!("Atttempted to call value() on {:?}", self)
 		}
 	}
 
