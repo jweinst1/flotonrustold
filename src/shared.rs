@@ -2,21 +2,12 @@ use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicBool, AtomicU32, AtomicU64
 use std::{thread, ptr};
 use std::time::{Duration, Instant};
 use std::convert::TryFrom;
+use crate::threading::*;
 use crate::epoch::{set_epoch, check_time};
 use crate::traits::NewType;
 
 static FREE_LIST_DEFAULT:u32 = 10;
 static FREE_LIST_LIM:AtomicU32 = AtomicU32::new(FREE_LIST_DEFAULT);
-static THREAD_COUNT_DEFAULT:usize = 8;
-static THREAD_COUNT:AtomicUsize = AtomicUsize::new(THREAD_COUNT_DEFAULT);
-
-pub fn get_thread_count() -> usize {
-    THREAD_COUNT.load(Ordering::SeqCst)
-}
-
-pub fn set_thread_count(count:usize) {
-    THREAD_COUNT.store(count, Ordering::SeqCst);
-}
 
 pub fn set_free_list_lim(limit:u32) {
     FREE_LIST_LIM.store(limit, Ordering::SeqCst);
@@ -255,7 +246,7 @@ mod tests {
 
     #[test]
     fn shared_init_works() {
-        let tcdef = THREAD_COUNT.load(Ordering::SeqCst);
+        let tcdef = get_thread_count();
         let shared = Shared::<TestType>::new();
         assert!(shared.t_count() == tcdef);
         assert!(!shared.time_check(1));
@@ -265,7 +256,7 @@ mod tests {
     fn shared_freerun_works() {
         // We want control of free list just for this test
         set_free_list_lim(50);
-        assert!(THREAD_COUNT.load(Ordering::SeqCst) > 1);
+        assert!(get_thread_count() > 1);
         set_epoch();
         let shared = Shared::<TestType>::new();
         shared.write(TimePtr::make(TestType(5)), 0);
@@ -281,7 +272,7 @@ mod tests {
     #[test]
     fn shared_timecheck_works() {
         set_epoch();
-        assert!(THREAD_COUNT.load(Ordering::SeqCst) > 3);
+        assert!(get_thread_count() > 3);
         let shared = Shared::<TestType>::new();
         let to_write = TimePtr::make(TestType(5));
         shared.write(to_write, 0);
