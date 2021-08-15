@@ -35,11 +35,10 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 	}
 }
 
-fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>, tid:usize) {
+fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, tid:usize) {
 	let key_depth = cmd[*place];
 	*place += 1;
 	let mut cur_map = data;
-	let mut not_found = false;
 	for _ in 0..(key_depth-1) {
 		let key_len = cmd[*place] as usize; // 1 byte for now
 		*place += 1;
@@ -65,7 +64,7 @@ pub fn run_cmd(cmd:&[u8], data:&Container<Value>, tid:usize, output:&mut Vec<u8>
 			},
 			constants::CMD_SET_KV => {
 				i += 1;
-				run_cmd_setkv(&mut i, cmd, data, output, tid);
+				run_cmd_setkv(&mut i, cmd, data, tid);
 			}
 			_ => panic!("Unexpected cmd byte {:?}", cmd[i])
 		}

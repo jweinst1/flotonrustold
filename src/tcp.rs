@@ -32,4 +32,18 @@ impl TcpServer {
 			running:AtomicBool::new(false)
 		}
 	}
+
+	pub fn start(&self) {
+		assert!(!self.running.load(Ordering::SeqCst));
+		self.core.store(Box::into_raw(Box::new(TcpListener::bind((self.addr.as_str(), self.port)).unwrap())), Ordering::SeqCst);
+		self.running.store(true, Ordering::SeqCst);
+	}
+
+	pub fn stop(&self) {
+		assert!(self.running.load(Ordering::SeqCst));
+		self.running.store(false, Ordering::SeqCst);
+		unsafe {
+			drop(Box::from_raw(self.core.load(Ordering::SeqCst)));
+		}
+	}
 }
