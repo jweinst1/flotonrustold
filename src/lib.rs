@@ -1,5 +1,6 @@
 pub mod constants;
 pub mod traits;
+#[macro_use] pub mod memory;
 pub mod values;
 pub mod epoch;
 pub mod hashtree;
