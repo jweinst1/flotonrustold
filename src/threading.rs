@@ -1,6 +1,9 @@
-use std::sync::atomic::{AtomicUsize, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, AtomicPtr, Ordering};
 use std::{thread, ptr};
-use crate::memory::*;
+use std::thread::JoinHandle;
+use std::sync::Arc;
+use std::ops::Deref;
+use crate::traits::*;
 
 const THREAD_COUNT_DEFAULT:usize = 8;
 // Considered the maximum amount of threads
@@ -47,6 +50,7 @@ impl<T> SPSCNode<T> {
 }
 
 // non-growable spsc queue 
+#[derive(Debug)]
 pub struct SpSc<T> {
 	head:AtomicPtr<SPSCNode<T>>,
 	tail:AtomicPtr<SPSCNode<T>>
@@ -94,7 +98,6 @@ impl<T> SpSc<T> {
 
 	pub fn pop(&self) -> Option<*mut T> {
 		let head = self.head.load(Ordering::SeqCst);
-		let tail = self.tail.load(Ordering::SeqCst);
 		unsafe {
 			let head_ref = head.as_ref().unwrap();
 			let read_ptr = head_ref.0.swap(ptr::null_mut(), Ordering::SeqCst);
@@ -107,6 +110,87 @@ impl<T> SpSc<T> {
 			}
 		}
 	}
+}
+
+// Used as a switch to communicate when a thread should shut down
+#[derive(Clone, Debug)]
+pub struct Switch(Arc<AtomicBool>);
+
+impl NewType for Switch {
+    fn new() -> Self {
+        Switch(Arc::new(AtomicBool::new(false)))
+    }
+}
+
+impl Switch {   
+    pub fn set(&self, state:bool) {
+        self.0.store(state, Ordering::SeqCst);
+    }
+    
+    pub fn get(&self) -> bool {
+        self.0.load(Ordering::SeqCst)
+    }
+}
+
+// Generic wrapper for shared reference between threads
+#[derive(Debug)]
+pub struct TVal<T>(Arc<T>);
+
+impl<T> TVal<T> {
+    pub fn new(val: T) -> Self {
+        TVal(Arc::new(val))
+    }
+}
+
+impl<T> Clone for TVal<T> {
+    fn clone(&self) -> Self {
+        TVal(self.0.clone())
+    }
+}
+
+impl<T> Deref for TVal<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug)]
+pub struct ExecUnit<T> {
+	handle:AtomicPtr<JoinHandle<()>>,
+	switch:Switch,
+	queue:TVal<SpSc<T>>
+}
+
+impl<T: 'static> ExecUnit<T> {
+    pub fn new(qsize:usize) -> ExecUnit<T> {
+        ExecUnit{handle:AtomicPtr::new(ptr::null_mut()),
+                 switch:Switch::new(),
+                 queue:TVal::new(SpSc::new(qsize))}
+    }
+
+    pub fn start(&self, func:fn(*mut T)) {
+    	self.switch.set(true);
+    	let tswitch = self.switch.clone();
+    	let tqueue = self.queue.clone();
+    	self.handle.store(alloc!(thread::spawn({move ||
+    		loop {
+    			if !tswitch.get() {
+    				break;
+    			}
+    			match tqueue.pop() {
+    				Some(ptr) => func(ptr),
+    				None => ()
+    			}
+    			// todo parking
+    		}
+    	})), Ordering::SeqCst);
+    }
+
+    pub fn stop(&self) {
+    	
+    }
 }
 
 #[cfg(test)]
@@ -130,9 +214,68 @@ mod tests {
     fn spsc_push_works() {
     	let qsize = 3;
     	let queue = SpSc::<TestType>::new(qsize);
+    	let items = [alloc!(TestType(4)), alloc!(TestType(4)), alloc!(TestType(4)), alloc!(TestType(4))];
+    	for i in 0..qsize {
+    		assert!(queue.push(items[i]));
+    	}
+    	// this should fail
+    	assert!(!queue.push(items[3]));
+    	for j in 0..qsize {
+    		free!(items[j]);
+    	}
+    }
+
+    #[test]
+    fn spsc_is_full_works() {
+    	let qsize = 3;
+    	let queue = SpSc::<TestType>::new(qsize);
     	let items = [alloc!(TestType(4)), alloc!(TestType(4)), alloc!(TestType(4))];
     	for i in 0..qsize {
     		assert!(queue.push(items[i]));
     	}
+
+    	assert!(queue.is_full());
+    	for j in 0..qsize {
+    		free!(items[j]);
+    	}
+    }
+
+    #[test]
+    fn spsc_pop_works() {
+    	let qsize = 3;
+    	let queue = SpSc::<TestType>::new(qsize);
+    	let items = [alloc!(TestType(4)), alloc!(TestType(4)), alloc!(TestType(4)), alloc!(TestType(4))];
+    	for i in 0..qsize {
+    		assert!(queue.push(items[i]));
+    	}
+    	// this should fail
+    	assert!(!queue.push(items[3]));
+    	for _ in 0..qsize {
+    		match queue.pop() {
+    			Some(ptr) => free!(ptr),
+    			None => panic!("Pop with non empty queue failed")
+    		}
+    	}
+    	match queue.pop() {
+    		Some(ptr) => panic!("Expected empty queue but got {:?}", ptr),
+    		_ => ()
+    	}
+    }
+
+    #[test]
+    fn switch_works() {
+	    let a = Switch::new();
+	    let b = a.clone();
+	    let handler = thread::spawn({move || 
+	        loop {
+	            if b.get() {
+	                b.set(false);
+	                break;
+	            }
+	        }
+	    });
+	    a.set(true);
+	    handler.join().unwrap();
+	    assert!(!a.get());
     }
 }
