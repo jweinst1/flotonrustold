@@ -1,5 +1,5 @@
-use std::time::{Duration, Instant};
-use std::mem::{self, MaybeUninit};
+use std::time::Instant;
+use std::mem::MaybeUninit;
 use std::convert::TryFrom;
 
 // Note, must be initialized from single threaded context

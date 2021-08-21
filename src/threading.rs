@@ -3,6 +3,7 @@ use std::{thread, ptr};
 use std::thread::JoinHandle;
 use std::sync::Arc;
 use std::ops::Deref;
+use std::time::Duration;
 use crate::traits::*;
 
 const THREAD_COUNT_DEFAULT:usize = 8;
@@ -158,38 +159,53 @@ impl<T> Deref for TVal<T> {
 
 #[derive(Debug)]
 pub struct ExecUnit<T> {
-	handle:AtomicPtr<JoinHandle<()>>,
+	handle:Option<JoinHandle<()>>,
 	switch:Switch,
 	queue:TVal<SpSc<T>>
 }
 
 impl<T: 'static> ExecUnit<T> {
-    pub fn new(qsize:usize) -> ExecUnit<T> {
-        ExecUnit{handle:AtomicPtr::new(ptr::null_mut()),
-                 switch:Switch::new(),
-                 queue:TVal::new(SpSc::new(qsize))}
+    pub fn new(qsize:usize, func:fn(*mut T)) -> ExecUnit<T> {
+        let queue = TVal::new(SpSc::new(qsize));
+        let switch = Switch::new();
+        switch.set(true);
+
+        let tqueue = queue.clone();
+        let tswitch = switch.clone();
+        let handle = thread::spawn({move ||
+	    		loop {
+	    			if !tswitch.get() {
+	    				// Finishes any remaining requests
+	    				while let Some(ptr) = tqueue.pop() {
+	    					func(ptr);
+	    				}
+	    				break;
+	    			}
+	    			match tqueue.pop() {
+	    				Some(ptr) => func(ptr),
+	    				None => ()
+	    			}
+	    			thread::park();
+	    		}
+	    	});
+        ExecUnit{handle:Some(handle), switch:switch, queue:queue}
     }
 
-    pub fn start(&self, func:fn(*mut T)) {
-    	self.switch.set(true);
-    	let tswitch = self.switch.clone();
-    	let tqueue = self.queue.clone();
-    	self.handle.store(alloc!(thread::spawn({move ||
-    		loop {
-    			if !tswitch.get() {
-    				break;
-    			}
-    			match tqueue.pop() {
-    				Some(ptr) => func(ptr),
-    				None => ()
-    			}
-    			// todo parking
-    		}
-    	})), Ordering::SeqCst);
+    pub fn give(&self, obj:T) -> bool {
+    	let result = self.queue.push(alloc!(obj));
+    	self.handle.as_ref().unwrap().thread().unpark();
+    	return result;
     }
 
-    pub fn stop(&self) {
-    	
+    pub fn give_ptr(&self, ptr:*mut T) -> bool {
+    	let result = self.queue.push(ptr);
+    	self.handle.as_ref().unwrap().thread().unpark();
+    	return result;
+    }
+
+    pub fn stop(&mut self) {
+    	self.switch.set(false);
+    	self.handle.take().unwrap().join().unwrap();
     }
 }
 
@@ -277,5 +293,27 @@ mod tests {
 	    a.set(true);
 	    handler.join().unwrap();
 	    assert!(!a.get());
+    }
+
+    fn sample_exec_func(obj:*mut u32) {
+    	unsafe { *obj += 1; }
+    }
+
+    #[test]
+    fn execunit_empty_works() {
+    	let mut eunit = ExecUnit::new(5, sample_exec_func);
+    	eunit.stop();
+    }
+
+    #[test]
+    fn execunit_give_ptr_works() {
+    	let mut eunit = ExecUnit::new(5, sample_exec_func);
+    	let num = alloc!(5);
+    	assert!(eunit.give_ptr(num));
+    	eunit.stop();
+    	unsafe {
+    		assert_eq!(*num, 6);
+    	}
+    	free!(num);
     }
 }

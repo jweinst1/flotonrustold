@@ -1,6 +1,7 @@
 pub mod constants;
 pub mod traits;
 #[macro_use] pub mod memory;
+pub mod settings;
 pub mod values;
 pub mod epoch;
 pub mod hashtree;
@@ -8,4 +9,5 @@ pub mod shared;
 pub mod containers;
 pub mod processors;
 pub mod threading;
+//pub mod database;
 pub mod tcp;
