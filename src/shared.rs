@@ -3,7 +3,7 @@ use std::{thread, ptr};
 use std::time::{Duration, Instant};
 use std::convert::TryFrom;
 use crate::threading::*;
-use crate::epoch::{set_epoch, check_time};
+use crate::tlocal;
 use crate::traits::NewType;
 
 static FREE_LIST_DEFAULT:u32 = 10;
@@ -18,7 +18,7 @@ pub struct TimePtr<T>(pub T, pub u64);
 
 impl<T> TimePtr<T> {
     pub fn make(val:T) -> *mut TimePtr<T> {
-        Box::into_raw(Box::new(TimePtr(val, check_time())))
+        Box::into_raw(Box::new(TimePtr(val, tlocal::time())))
     }
     
     pub fn get_time(ptr:*mut TimePtr<T>) -> Option<u64> {
@@ -210,7 +210,7 @@ mod tests {
 
     #[test]
     fn freenode_works() {
-        set_epoch();
+        tlocal::set_epoch();
         let tptr = TimePtr::make(30);
         let fnode = FreeNode::new_ptr(tptr);
         unsafe {
@@ -223,7 +223,7 @@ mod tests {
 
     #[test]
     fn freelist_add_works() {
-        set_epoch();
+        tlocal::set_epoch();
         let flist = FreeList::new();
         let value:u32 = 777;
         assert!(flist.count() == 0);
@@ -257,7 +257,7 @@ mod tests {
         // We want control of free list just for this test
         set_free_list_lim(50);
         assert!(get_thread_count() > 1);
-        set_epoch();
+        tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
         shared.write(TimePtr::make(TestType(5)), 0);
         assert!(shared.free_run(0) == 0);
@@ -271,7 +271,7 @@ mod tests {
 
     #[test]
     fn shared_timecheck_works() {
-        set_epoch();
+        tlocal::set_epoch();
         assert!(get_thread_count() > 3);
         let shared = Shared::<TestType>::new();
         let to_write = TimePtr::make(TestType(5));
@@ -283,7 +283,7 @@ mod tests {
 
     #[test]
     fn shared_rw_works() {
-        set_epoch();
+        tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
         let to_write = TimePtr::make(TestType(5));
         shared.write(to_write, 0);
@@ -293,7 +293,7 @@ mod tests {
 
     #[test]
     fn shared_rw_time_works() {
-        set_epoch();
+        tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
         let to_write1 = TimePtr::make(TestType(5));
         let to_write2 = TimePtr::make(TestType(1));
@@ -312,7 +312,7 @@ mod tests {
 
     #[test]
     fn shared_update_time_works() {
-        set_epoch();
+        tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
         shared.write(TimePtr::make(TestType(5)), 0);
         let seen_time1 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);

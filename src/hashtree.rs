@@ -3,7 +3,7 @@ use std::ptr;
 use std::fmt::Debug;
 use std::ops::Deref;
 use std::convert::TryFrom;
-use crate::epoch::{set_epoch, check_time};
+use crate::tlocal;
 use crate::traits::NewType;
 
 static DEFAULT_HASH_BASE:u64 = 0x5331;
@@ -21,7 +21,7 @@ impl HashScheme {
 	}
 
 	fn evolve(&self) -> HashScheme {
-		let tick = check_time();
+		let tick = tlocal::time();
 		HashScheme(self.0 ^ tick)
 	}
 
@@ -204,7 +204,7 @@ mod tests {
 
     #[test]
     fn evolve_hash_works() {
-    	set_epoch();
+    	tlocal::set_epoch();
     	let hs = HashScheme::default();
     	let s = String::from("Hello!");
     	let hash1 = hs.hash(s.as_bytes());
@@ -215,7 +215,7 @@ mod tests {
 
     #[test]
     fn insert_works() {
-    	set_epoch();
+    	tlocal::set_epoch();
     	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
     	let key = "Hello!";
     	let v = tree.insert_string(key);
@@ -227,7 +227,7 @@ mod tests {
 
     #[test]
     fn find_basic_works() {
-    	set_epoch();
+    	tlocal::set_epoch();
     	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
     	let key = "Hello!";
     	let v = tree.insert_string(key);
@@ -239,7 +239,7 @@ mod tests {
 
     #[test]
     fn find_multi_works() {
-    	set_epoch();
+    	tlocal::set_epoch();
     	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
     	let key1 = "Hello!";
     	let key2 = "Hell3!";

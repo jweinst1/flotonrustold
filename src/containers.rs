@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU32, AtomicU64, Ordering};
 use std::ptr;
 use std::fmt::Debug;
 use crate::shared::*;
-use crate::epoch::set_epoch;
+use crate::tlocal;
 use crate::hashtree::{HashTree, HashScheme};
 
 #[derive(Debug)]
@@ -84,7 +84,7 @@ mod tests {
 
     #[test]
     fn set_map_works() {
-    	set_epoch();
+    	tlocal::set_epoch();
         let map = Container::new_map(20);
         let key = b"test";
         let val = Container::Val(TestType(10));
@@ -103,7 +103,7 @@ mod tests {
 
     #[test]
     fn get_map_shared_works() {
-        set_epoch();
+        tlocal::set_epoch();
         let map = Container::new_map(20);
         let key = b"test";
         let val = Container::Val(TestType(10));
@@ -120,7 +120,7 @@ mod tests {
 
     #[test]
     fn get_map_works() {
-        set_epoch();
+        tlocal::set_epoch();
         let map = Container::new_map(20);
         let key = b"test";
         let val = Container::Val(TestType(10));
@@ -133,7 +133,7 @@ mod tests {
 
     #[test]
     fn create_set_map_works() {
-        set_epoch();
+        tlocal::set_epoch();
         let map = Container::new_map(20);
         let key = b"test";
         let key2 = b"test2";

@@ -1,6 +1,6 @@
 use crate::constants;
 use crate::values::Value;
-use crate::epoch::set_epoch;
+use crate::tlocal;
 use crate::containers::Container;
 use crate::traits::*;
 use std::io::prelude::*;
@@ -87,7 +87,7 @@ mod tests {
     	write!(cmd_buf, "hello").expect("NO WRITE");
     	cmd_buf.push(constants::CMD_STOP); // stop ops
     	write!(key_buf, "hello").expect("NO WRITE");
-    	set_epoch();
+    	tlocal::set_epoch();
     	let tid = 0;
     	let val = Value::Bool(false);
     	let cont = Container::<Value>::new_map(50);
@@ -111,7 +111,7 @@ mod tests {
     	cmd_buf.push(constants::CMD_STOP); // stop ops
     	write!(key_buf, "hello").expect("NO WRITE");
 
-    	set_epoch();
+    	tlocal::set_epoch();
     	let tid = 0;
     	let val = Value::Bool(false);
     	let cont_inner = Container::<Value>::new_map(10);
@@ -125,7 +125,7 @@ mod tests {
 
     #[test]
     fn setkv_works() {
-    	set_epoch();
+    	tlocal::set_epoch();
     	let cont = Container::<Value>::new_map(50);
     	let tid = 0;
     	// set cmd
@@ -151,7 +151,7 @@ mod tests {
 
     #[test]
     fn setkv_nested_works() {
-    	set_epoch();
+    	tlocal::set_epoch();
     	let cont = Container::<Value>::new_map(50);
     	let tid = 0;
     	// set cmd
