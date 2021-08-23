@@ -2,6 +2,7 @@ pub mod constants;
 pub mod traits;
 #[macro_use] pub mod memory;
 //pub mod settings;
+pub mod trie;
 pub mod tlocal;
 pub mod values;
 pub mod hashtree;

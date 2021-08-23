@@ -8,7 +8,7 @@ static THREAD_CNTR:AtomicUsize = AtomicUsize::new(0);
 
 thread_local!(static TH_ID:usize = THREAD_CNTR.fetch_add(1, Ordering::SeqCst));
 
-fn tid() -> usize {
+pub fn tid() -> usize {
     TH_ID.with(|x| { *x })
 }
 
