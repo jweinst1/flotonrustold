@@ -9,6 +9,10 @@ macro_rules! isnull {
 	($obj:expr) => { $obj == ptr::null_mut() }
 }
 
+macro_rules! nonull {
+	($obj:expr) => { $obj != ptr::null_mut() }
+}
+
 macro_rules! newptr {
 	() => { AtomicPtr::new(ptr::null_mut()) }
 }
