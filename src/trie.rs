@@ -167,6 +167,15 @@ impl<T> IntTrie<T> {
 				base.create_seq(3);
 				base.create_seq(4);
 				base.create_seq(5);			
+			},
+			7 => {
+				base.create_seq(0);
+				base.create_seq(1);
+				base.create_seq(2);
+				base.create_seq(3);
+				base.create_seq(4);
+				base.create_seq(5);
+				base.create_seq(6);	
 			}
 			_ => {
 				for i in 0..size {
@@ -176,6 +185,7 @@ impl<T> IntTrie<T> {
 		}
 		IntTrie{nodes:base}
 	}
+	
 }
 
 #[cfg(test)]
@@ -230,18 +240,76 @@ mod tests {
     		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
     	}
     	let c = IntNode::<u32>::new();
-    	b.create_seq(4);
+    	c.create_seq(4);
     	unsafe {
-    		let node2 = b.1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    		let node2 = c.1[0].load(Ordering::SeqCst).as_ref().unwrap()
     			         .1[0].load(Ordering::SeqCst).as_ref().unwrap()
     			         .1[1].load(Ordering::SeqCst).as_ref().unwrap();
     		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
     		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
     	}
-    	b.create_seq(7);
+    	c.create_seq(7);
+    	unsafe {
+    		let node2 = c.1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap();
+    		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
+    		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
+    	}
+    	let d = IntNode::<u32>::new();
+    	d.create_seq(10);
+    	unsafe {
+     		let node2 = d.1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap();
+    		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
+    		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
+    	}
+    	d.create_seq(17);
+    	unsafe {
+     		let node2 = d.1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap();
+    		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
+    		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
+    	}
+    }
+
+    #[test]
+    fn inode_get_seq_works() {
+    	let b = IntNode::<u32>::new();
+    	b.get_seq(3);
+    	unsafe {
+    		let node2 = b.1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			.1[1].load(Ordering::SeqCst).as_ref().unwrap();
+    		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
+    		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
+    	}
+    	b.get_seq(7);
     	unsafe {
     		let node2 = b.1[1].load(Ordering::SeqCst).as_ref().unwrap()
     			         .1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap();
+    		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
+    		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
+    	}
+    	b.get_seq(6);
+    	unsafe {
+    		let node2 = b.1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap();
+    		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
+    		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
+    	}
+    	b.get_seq(21);
+    	unsafe {
+     		let node2 = b.1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[0].load(Ordering::SeqCst).as_ref().unwrap()
     			         .1[1].load(Ordering::SeqCst).as_ref().unwrap();
     		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
     		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
