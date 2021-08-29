@@ -3,7 +3,7 @@ use std::ptr;
 use crate::traits::*;
 
 #[derive(Debug)]
-struct IntNode<T>(AtomicPtr<T>, [AtomicPtr<IntNode<T>>;2]);
+pub struct IntNode<T>(AtomicPtr<T>, [AtomicPtr<IntNode<T>>;2]);
 
 impl<T> NewType for IntNode<T> {
 	fn new() -> Self {
@@ -120,6 +120,36 @@ impl<T> IntNode<T> {
 			}
 		}
 	}
+
+	pub fn check_if_one(&self, func:fn(&T) -> bool) -> bool {
+		unsafe {
+			match self.0.load(Ordering::SeqCst).as_ref() {
+				Some(r) => {
+					if func(r) {
+						return true;
+					}
+				},
+				None => ()
+			}
+			match self.1[0].load(Ordering::SeqCst).as_ref() {
+				Some(r) => {
+					if r.check_if_one(func) {
+						return true;
+					}
+				},
+				_ => ()
+			}
+			match self.1[1].load(Ordering::SeqCst).as_ref() {
+				Some(r) => {
+					if r.check_if_one(func) {
+						return true;
+					}
+				},
+				_ => ()
+			}
+		}
+		return false;
+	}
 }
 
 // A trie that uses integers as keys
@@ -133,6 +163,7 @@ impl<T> IntTrie<T> {
 	// Pre-creates up to size, the amount of slots
 	// size of 1 means only the first, '0' slot is pre-
 	// created.
+	// todo optimize get based on pre-created values
 	pub fn new(size:usize) -> IntTrie<T> {
 		let base = IntNode::new();
 		match size {
@@ -185,7 +216,14 @@ impl<T> IntTrie<T> {
 		}
 		IntTrie{nodes:base}
 	}
-	
+
+	pub fn get_or_create(&self, key:usize) -> &IntNode<T> {
+		self.nodes.get_seq(key)
+	}
+
+	pub fn check_if_one(&self, func:fn(&T) -> bool) -> bool {
+		self.nodes.check_if_one(func)
+	}
 }
 
 #[cfg(test)]
@@ -314,6 +352,30 @@ mod tests {
     		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
     		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
     	}
+    }
+
+    #[derive(Debug)]
+    struct TimePoint(AtomicUsize);
+
+    impl TimePoint {
+    	fn time(&self) -> usize {
+    		self.0.load(Ordering::SeqCst)
+    	}
+    }
+
+    fn is_over_time(obj:&TimePoint) -> bool {
+    	obj.time() > 4
+    }
+
+    #[test]
+    fn check_if_one_works() {
+    	let b = IntTrie::<TimePoint>::new(4);
+    	let got = b.get_or_create(3);
+    	got.0.store(alloc!(TimePoint(AtomicUsize::new(6))), Ordering::SeqCst);
+    	let got2 = b.get_or_create(1);
+    	got2.0.store(alloc!(TimePoint(AtomicUsize::new(2))), Ordering::SeqCst);
+    	assert!(b.check_if_one(is_over_time));
+
     }
 }
 
