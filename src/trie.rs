@@ -121,11 +121,11 @@ impl<T> IntNode<T> {
 		}
 	}
 
-	pub fn check_if_one(&self, func:fn(&T) -> bool) -> bool {
+	pub fn check_if_one<P>(&self, func:fn(&T, &P) -> bool, arg:&P) -> bool {
 		unsafe {
 			match self.0.load(Ordering::SeqCst).as_ref() {
 				Some(r) => {
-					if func(r) {
+					if func(r, arg) {
 						return true;
 					}
 				},
@@ -133,7 +133,7 @@ impl<T> IntNode<T> {
 			}
 			match self.1[0].load(Ordering::SeqCst).as_ref() {
 				Some(r) => {
-					if r.check_if_one(func) {
+					if r.check_if_one(func, arg) {
 						return true;
 					}
 				},
@@ -141,7 +141,7 @@ impl<T> IntNode<T> {
 			}
 			match self.1[1].load(Ordering::SeqCst).as_ref() {
 				Some(r) => {
-					if r.check_if_one(func) {
+					if r.check_if_one(func, arg) {
 						return true;
 					}
 				},
@@ -221,8 +221,8 @@ impl<T> IntTrie<T> {
 		self.nodes.get_seq(key)
 	}
 
-	pub fn check_if_one(&self, func:fn(&T) -> bool) -> bool {
-		self.nodes.check_if_one(func)
+	pub fn check_if_one<P>(&self, func:fn(&T, &P) -> bool, arg:&P) -> bool {
+		self.nodes.check_if_one(func, arg)
 	}
 }
 
@@ -357,25 +357,41 @@ mod tests {
     #[derive(Debug)]
     struct TimePoint(AtomicUsize);
 
+    #[derive(Debug)]
+    struct TimeRange(usize, usize);
+
+    impl TimeRange {
+    	fn contains(&self, arg:usize) -> bool {
+    		self.0 <= arg && self.1 >= arg
+    	}
+    }
+
     impl TimePoint {
     	fn time(&self) -> usize {
     		self.0.load(Ordering::SeqCst)
     	}
     }
 
-    fn is_over_time(obj:&TimePoint) -> bool {
-    	obj.time() > 4
+    fn is_over_time(obj:&TimePoint, op:&usize) -> bool {
+    	obj.time() > *op
+    }
+
+    fn is_between_time(obj:&TimePoint, op:&TimeRange) -> bool {
+    	op.contains(obj.time())
     }
 
     #[test]
     fn check_if_one_works() {
+    	// integer cmp test
     	let b = IntTrie::<TimePoint>::new(4);
     	let got = b.get_or_create(3);
     	got.0.store(alloc!(TimePoint(AtomicUsize::new(6))), Ordering::SeqCst);
     	let got2 = b.get_or_create(1);
     	got2.0.store(alloc!(TimePoint(AtomicUsize::new(2))), Ordering::SeqCst);
-    	assert!(b.check_if_one(is_over_time));
-
+    	assert!(b.check_if_one(is_over_time, &4));
+    	// range test
+    	let rng = TimeRange(0, 2);
+    	assert!(b.check_if_one(is_between_time, &rng));
     }
 }
 
