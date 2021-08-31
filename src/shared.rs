@@ -5,6 +5,7 @@ use std::convert::TryFrom;
 use crate::threading::*;
 use crate::tlocal;
 use crate::traits::NewType;
+use crate::trie::IntTrie;
 
 static FREE_LIST_DEFAULT:u32 = 10;
 static FREE_LIST_LIM:AtomicU32 = AtomicU32::new(FREE_LIST_DEFAULT);

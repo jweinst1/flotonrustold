@@ -4,7 +4,6 @@ use crate::tlocal;
 use crate::containers::Container;
 use crate::traits::*;
 use std::io::prelude::*;
-use std::fmt::Debug;
 
 /*
  * Run / process commands on containers 

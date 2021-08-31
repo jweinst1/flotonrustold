@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicUsize, AtomicPtr, Ordering};
 use std::ptr;
 use crate::traits::*;
+use crate::tlocal;
 
 #[derive(Debug)]
 pub struct IntNode<T>(AtomicPtr<T>, [AtomicPtr<IntNode<T>>;2]);
@@ -11,7 +12,7 @@ impl<T> NewType for IntNode<T> {
 	}
 }
 
-impl<T> IntNode<T> {
+impl<T: NewType> IntNode<T> {
 	// little endian style
 	#[inline]
 	pub fn get_0(&self) -> &IntNode<T> {
@@ -159,7 +160,7 @@ pub struct IntTrie<T>{
 }
 
 
-impl<T> IntTrie<T> {
+impl<T: NewType> IntTrie<T> {
 	// Pre-creates up to size, the amount of slots
 	// size of 1 means only the first, '0' slot is pre-
 	// created.
@@ -217,10 +218,23 @@ impl<T> IntTrie<T> {
 		IntTrie{nodes:base}
 	}
 
-	pub fn get_or_create(&self, key:usize) -> &IntNode<T> {
+	pub fn get_node(&self, key:usize) -> &IntNode<T> {
 		self.nodes.get_seq(key)
 	}
 
+	// Safety guarantee that is only accessed by owning thread
+	pub fn get_by_tid(&self) -> &T {
+		let node = self.nodes.get_seq(tlocal::tid());
+		let loaded = node.0.load(Ordering::SeqCst);
+		if isnull!(loaded) {
+			let init = alloc!(T::new());
+			node.0.store(init, Ordering::SeqCst);
+			return unsafe { init.as_ref().unwrap() }
+		}
+		unsafe { loaded.as_ref().unwrap() }
+	} 
+
+	#[inline]
 	pub fn check_if_one<P>(&self, func:fn(&T, &P) -> bool, arg:&P) -> bool {
 		self.nodes.check_if_one(func, arg)
 	}
@@ -229,6 +243,10 @@ impl<T> IntTrie<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    impl NewType for u32 {
+    	fn new() -> Self { 0 }
+    }
 
     #[test]
     fn inode_create01_works() {
@@ -357,6 +375,10 @@ mod tests {
     #[derive(Debug)]
     struct TimePoint(AtomicUsize);
 
+    impl NewType for TimePoint {
+    	fn new() -> Self { TimePoint(AtomicUsize::new(0)) }
+    }
+
     #[derive(Debug)]
     struct TimeRange(usize, usize);
 
@@ -384,14 +406,23 @@ mod tests {
     fn check_if_one_works() {
     	// integer cmp test
     	let b = IntTrie::<TimePoint>::new(4);
-    	let got = b.get_or_create(3);
+    	let got = b.get_node(3);
     	got.0.store(alloc!(TimePoint(AtomicUsize::new(6))), Ordering::SeqCst);
-    	let got2 = b.get_or_create(1);
+    	let got2 = b.get_node(1);
     	got2.0.store(alloc!(TimePoint(AtomicUsize::new(2))), Ordering::SeqCst);
     	assert!(b.check_if_one(is_over_time, &4));
     	// range test
     	let rng = TimeRange(0, 2);
     	assert!(b.check_if_one(is_between_time, &rng));
+    }
+
+    #[test]
+    fn check_if_get_by_tid_works() {
+    	let b = IntTrie::<TimePoint>::new(4);
+    	let current_tid = tlocal::tid();
+    	let val = b.get_by_tid();
+    	let regular_node = b.get_node(current_tid);
+    	assert!(nonull!(regular_node.0.load(Ordering::SeqCst)));
     }
 }
 
