@@ -10,7 +10,7 @@ use std::io::prelude::*;
  */
 
 
-fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>, tid:usize) {
+fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) {
 	let key_depth = cmd[*place];
 	*place += 1;
 	let mut cur_map = data;
@@ -19,7 +19,7 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 		let key_len = cmd[*place] as usize; // 1 byte for now
 		*place += 1;
 		if !not_found {
-			match (*cur_map).get_map(&cmd[*place..(*place + key_len)], tid) {
+			match (*cur_map).get_map(&cmd[*place..(*place + key_len)]) {
 				Some(inner_map) => cur_map = inner_map,
 				None => {
 					// start skipping
@@ -34,14 +34,14 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 	}
 }
 
-fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, tid:usize) {
+fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) {
 	let key_depth = cmd[*place];
 	*place += 1;
 	let mut cur_map = data;
 	for _ in 0..(key_depth-1) {
 		let key_len = cmd[*place] as usize; // 1 byte for now
 		*place += 1;
-		cur_map = (*cur_map).create_set_map(&cmd[*place..(*place + key_len)], tid, 30 /*todo make specify*/);
+		cur_map = (*cur_map).create_set_map(&cmd[*place..(*place + key_len)], 30 /*todo make specify*/);
 		*place += key_len;
 	}
 	let key_len = cmd[*place] as usize; // 1 byte for now
@@ -49,21 +49,21 @@ fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, tid:usize
 	let harvested_key = &cmd[*place..(*place + key_len)];
 	*place += key_len;
 	let harvested_val = Container::Val(Value::input_binary(cmd, place));
-	(*cur_map).set_map(harvested_key, harvested_val, tid);
+	(*cur_map).set_map(harvested_key, harvested_val);
 }
 
-pub fn run_cmd(cmd:&[u8], data:&Container<Value>, tid:usize, output:&mut Vec<u8>) {
+pub fn run_cmd(cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) {
 	let mut i = 0;
 	loop {
 		match cmd[i] {
 			constants::CMD_STOP => return,
 			constants::CMD_RETURN_KV  => {
 				i += 1;
-				run_cmd_returnkv(&mut i, cmd, data, output, tid);
+				run_cmd_returnkv(&mut i, cmd, data, output);
 			},
 			constants::CMD_SET_KV => {
 				i += 1;
-				run_cmd_setkv(&mut i, cmd, data, tid);
+				run_cmd_setkv(&mut i, cmd, data);
 			}
 			_ => panic!("Unexpected cmd byte {:?}", cmd[i])
 		}
@@ -87,11 +87,10 @@ mod tests {
     	cmd_buf.push(constants::CMD_STOP); // stop ops
     	write!(key_buf, "hello").expect("NO WRITE");
     	tlocal::set_epoch();
-    	let tid = 0;
     	let val = Value::Bool(false);
     	let cont = Container::<Value>::new_map(50);
-    	cont.set_map(key_buf.as_slice(), Container::Val(val), tid);
-    	run_cmd(cmd_buf.as_slice(), &cont, tid, &mut out_buf);
+    	cont.set_map(key_buf.as_slice(), Container::Val(val));
+    	run_cmd(cmd_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
     	assert_eq!(out_buf[1], 0);
     }
@@ -111,13 +110,12 @@ mod tests {
     	write!(key_buf, "hello").expect("NO WRITE");
 
     	tlocal::set_epoch();
-    	let tid = 0;
     	let val = Value::Bool(false);
     	let cont_inner = Container::<Value>::new_map(10);
-    	cont_inner.set_map(key_buf.as_slice(), Container::Val(val), tid);
+    	cont_inner.set_map(key_buf.as_slice(), Container::Val(val));
     	let cont = Container::<Value>::new_map(10);
-    	cont.set_map(key_buf.as_slice(), cont_inner, tid);
-    	run_cmd(cmd_buf.as_slice(), &cont, tid, &mut out_buf);
+    	cont.set_map(key_buf.as_slice(), cont_inner);
+    	run_cmd(cmd_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
     	assert_eq!(out_buf[1], 0);
     }
@@ -126,7 +124,6 @@ mod tests {
     fn setkv_works() {
     	tlocal::set_epoch();
     	let cont = Container::<Value>::new_map(50);
-    	let tid = 0;
     	// set cmd
     	let mut cmd_s_buf = Vec::<u8>::new();
     	cmd_s_buf.push(constants::CMD_SET_KV);
@@ -143,7 +140,7 @@ mod tests {
     	cmd_s_buf.push(5); // key len
     	write!(cmd_s_buf, "hello").expect("NO WRITE");
     	cmd_s_buf.push(constants::CMD_STOP); // stop ops
-    	run_cmd(cmd_s_buf.as_slice(), &cont, tid, &mut out_buf);
+    	run_cmd(cmd_s_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
     	assert_eq!(out_buf[1], 1);
     }
@@ -152,7 +149,6 @@ mod tests {
     fn setkv_nested_works() {
     	tlocal::set_epoch();
     	let cont = Container::<Value>::new_map(50);
-    	let tid = 0;
     	// set cmd
     	let mut cmd_s_buf = Vec::<u8>::new();
     	cmd_s_buf.push(constants::CMD_SET_KV);
@@ -173,7 +169,7 @@ mod tests {
     	cmd_s_buf.push(5); // key len
     	write!(cmd_s_buf, "hello").expect("NO WRITE");
     	cmd_s_buf.push(constants::CMD_STOP); // stop ops
-    	run_cmd(cmd_s_buf.as_slice(), &cont, tid, &mut out_buf);
+    	run_cmd(cmd_s_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
     	assert_eq!(out_buf[1], 1);
     }

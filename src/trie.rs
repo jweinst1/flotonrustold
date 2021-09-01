@@ -223,15 +223,18 @@ impl<T: NewType> IntTrie<T> {
 	}
 
 	// Safety guarantee that is only accessed by owning thread
+	#[inline]
 	pub fn get_by_tid(&self) -> &T {
 		let node = self.nodes.get_seq(tlocal::tid());
 		let loaded = node.0.load(Ordering::SeqCst);
 		if isnull!(loaded) {
 			let init = alloc!(T::new());
 			node.0.store(init, Ordering::SeqCst);
-			return unsafe { init.as_ref().unwrap() }
+			ptref!(init)
 		}
-		unsafe { loaded.as_ref().unwrap() }
+		else {
+			ptref!(loaded)
+		}
 	} 
 
 	#[inline]

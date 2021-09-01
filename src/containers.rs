@@ -23,21 +23,21 @@ impl<T: Debug> Container<T> {
         }
     }
 
-	pub fn set_map(&self, key:&[u8], val:Container<T>, tid:usize) {
+	pub fn set_map(&self, key:&[u8], val:Container<T>) {
 		match self {
 			Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
-			Container::Map(m) => m.insert_bytes(key).write(TimePtr::make(val), tid)
+			Container::Map(m) => m.insert_bytes(key).write(TimePtr::make(val))
 		}
 	}
 
-    pub fn create_set_map(&self, key:&[u8], tid:usize, slots_size:usize) -> &Container<T> {
+    pub fn create_set_map(&self, key:&[u8], slots_size:usize) -> &Container<T> {
         match self {
             Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
             Container::Map(m) => {
                 let location = m.insert_bytes(key);
                 // first, check if map already exists
                 unsafe {
-                    match location.read(tid).as_ref() {
+                    match location.read().as_ref() {
                         Some(loc_r) => match loc_r.0 {
                             Container::Map(_) => return &loc_r.0,
                             Container::Val(_) => () // can overwrite a val, proceed.
@@ -45,10 +45,10 @@ impl<T: Debug> Container<T> {
                         None => () // proceed to write
                     }
                 }
-                location.write(TimePtr::make(Container::new_map(slots_size)), tid);
+                location.write(TimePtr::make(Container::new_map(slots_size)));
                 // Do another read. This helps get the most up to date value.
                 unsafe {
-                    &location.read(tid).as_ref().unwrap().0
+                    &location.read().as_ref().unwrap().0
                 }
             }
         }
@@ -61,11 +61,11 @@ impl<T: Debug> Container<T> {
         }
     }
 
-    pub fn get_map(&self, key:&[u8], tid:usize) -> Option<&Container<T>> {
+    pub fn get_map(&self, key:&[u8]) -> Option<&Container<T>> {
         match self {
             Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
             Container::Map(m) => match m.find_bytes(key) {
-                Some(refval) => unsafe { match refval.read(tid).as_ref() {
+                Some(refval) => unsafe { match refval.read().as_ref() {
                     Some(r) => Some(&r.0),
                     None => None
                 }},
@@ -88,10 +88,10 @@ mod tests {
         let map = Container::new_map(20);
         let key = b"test";
         let val = Container::Val(TestType(10));
-        map.set_map(key, val, 0);
+        map.set_map(key, val);
         match map {
             Container::Map(m) => match m.find_bytes(key) {
-                Some(r) => unsafe { match r.read(0).as_ref() {
+                Some(r) => unsafe { match r.read().as_ref() {
                     Some(rval) => assert_eq!(rval.0.value().0, 10),
                     None => panic!("Unexpected nullptr from shared loc {:?}", r)
                  } },
@@ -107,9 +107,9 @@ mod tests {
         let map = Container::new_map(20);
         let key = b"test";
         let val = Container::Val(TestType(10));
-        map.set_map(key, val, 0);
+        map.set_map(key, val);
         match map.get_map_shared(key) { Some(rsh) => unsafe {  
-            match rsh.read(0).as_ref() { 
+            match rsh.read().as_ref() { 
                 Some(rval) =>  assert_eq!(rval.0.value().0, 10), 
                 None => panic!("Unexpected nullptr from shared loc {:?}", rsh) 
             }
@@ -124,8 +124,8 @@ mod tests {
         let map = Container::new_map(20);
         let key = b"test";
         let val = Container::Val(TestType(10));
-        map.set_map(key, val, 0);
-        match map.get_map(key, 0) {
+        map.set_map(key, val);
+        match map.get_map(key) {
             Some(rv) => assert_eq!(rv.value().0, 10),
             None => panic!("key: {:?} not found in map {:?}", key, map)
         } 
@@ -138,14 +138,14 @@ mod tests {
         let key = b"test";
         let key2 = b"test2";
         let val = Container::Val(TestType(10));
-        let created = map.create_set_map(key, 0, 30);
+        let created = map.create_set_map(key, 30);
         match created {
             Container::Val(v) => panic!("Expected Map to be returned, got Val({:?})", v),
             Container::Map(_) => () // This is expected
         }
-        created.set_map(key2, val, 0);
+        created.set_map(key2, val);
         // test for overwrite
-        match map.create_set_map(key, 0, 30).get_map(key2, 0) {
+        match map.create_set_map(key, 30).get_map(key2) {
             Some(val_c) => assert_eq!(val_c.value().0, 10),
             None => panic!("Expected to find key {:?} nested in key {:?}", key2, key)
         }

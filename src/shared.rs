@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicBool, AtomicU32, AtomicU64
 use std::{thread, ptr};
 use std::time::{Duration, Instant};
 use std::convert::TryFrom;
-use crate::threading::*;
 use crate::tlocal;
 use crate::traits::NewType;
 use crate::trie::IntTrie;
@@ -19,7 +18,7 @@ pub struct TimePtr<T>(pub T, pub u64);
 
 impl<T> TimePtr<T> {
     pub fn make(val:T) -> *mut TimePtr<T> {
-        Box::into_raw(Box::new(TimePtr(val, tlocal::time())))
+        alloc!(TimePtr(val, tlocal::time()))
     }
     
     pub fn get_time(ptr:*mut TimePtr<T>) -> Option<u64> {
@@ -39,11 +38,11 @@ struct FreeNode<T>(AtomicPtr<TimePtr<T>>, AtomicPtr<FreeNode<T>>);
 
 impl<T> FreeNode<T> {
     fn new() -> *mut FreeNode<T> {
-        Box::into_raw(Box::new(FreeNode(AtomicPtr::new(ptr::null_mut()), AtomicPtr::new(ptr::null_mut()))))
+        alloc!(FreeNode(AtomicPtr::new(ptr::null_mut()), AtomicPtr::new(ptr::null_mut())))
     }
 
     fn new_ptr(ptr:*mut TimePtr<T>) -> *mut FreeNode<T> {
-        Box::into_raw(Box::new(FreeNode(AtomicPtr::new(ptr), AtomicPtr::new(ptr::null_mut()))))
+        alloc!(FreeNode(AtomicPtr::new(ptr), AtomicPtr::new(ptr::null_mut())))
     }
 }
 // This is not actually thread safe, this should only be called by a specific thread
@@ -51,10 +50,13 @@ impl<T> FreeNode<T> {
 #[derive(Debug)]
 struct FreeList<T>(AtomicPtr<FreeNode<T>>, AtomicU32);
 
-impl<T> FreeList<T> {
-    fn new() -> FreeList<T> {
+impl<T> NewType for FreeList<T> {
+    fn new() -> Self {
         FreeList(AtomicPtr::new(FreeNode::new()), AtomicU32::new(0))
     }
+}
+
+impl<T> FreeList<T> {
 
     fn count(&self) -> u32 {
         self.1.load(Ordering::SeqCst)
@@ -92,20 +94,22 @@ struct ThreadStorage<T> {
     free_list:FreeList<T>
 }
 
+impl<T> NewType for ThreadStorage<T> {
+    fn new() -> Self {
+        ThreadStorage{cur_time:AtomicU64::new(0), free_list:FreeList::new()}
+    }
+}
+
 #[derive(Debug)]
 pub struct Shared<T> {
-    time_keeps:Vec<ThreadStorage<T>>,
+    time_keeps:IntTrie<ThreadStorage<T>>,
     cur_ptr:AtomicPtr<TimePtr<T>>
 }
 
 impl<T> NewType for Shared<T> {
     fn new() -> Shared<T> {
-        let mut ts_vec = vec![];
-        let tc = get_thread_count();
-        for _ in 0..tc {
-            ts_vec.push(ThreadStorage{cur_time:AtomicU64::new(0), free_list:FreeList::new()});
-        }
-        Shared{time_keeps:ts_vec, cur_ptr:AtomicPtr::new(ptr::null_mut())}
+        // todo make configurable
+        Shared{time_keeps:IntTrie::new(5), cur_ptr:newptr!()}
     }
 }
 
@@ -117,22 +121,17 @@ impl<T> Shared<T> {
         made
     }
     
-    pub fn t_count(&self) -> usize {
-        self.time_keeps.len()
-    }
-    
     pub fn time_check(&self, ctime:u64) -> bool {
         // Checks if all threads have advanced past some time, allowing safe freeing.
-        for i in 0..self.time_keeps.len() {
-            if self.time_keeps[i].cur_time.load(Ordering::SeqCst) < ctime {
-                return false
-            }
+
+        fn check_time_keep<T>(stor:&ThreadStorage<T>, op:&u64) -> bool {
+            stor.cur_time.load(Ordering::SeqCst) < *op
         }
-        return true
+        return self.time_keeps.check_if_one(check_time_keep, &ctime);
     }
 
-    pub fn free_run(&self, tid:usize) -> u32  {
-        let flist = &self.time_keeps[tid].free_list;
+    pub fn free_run(&self) -> u32  {
+        let flist = &self.time_keeps.get_by_tid().free_list;
         if flist.count() < FREE_LIST_LIM.load(Ordering::SeqCst) {
             return 0;
         }
@@ -147,7 +146,7 @@ impl<T> Shared<T> {
                         match inner_ptr.as_ref()  {
                             Some(rp) => {
                                 if self.time_check(rp.1) {
-                                    drop(Box::from_raw(inner_ptr));
+                                    free!(inner_ptr);
                                     freed += 1;
                                     r.0.store(ptr::null_mut(), Ordering::SeqCst);
                                 }
@@ -164,11 +163,11 @@ impl<T> Shared<T> {
         return freed;
     }
     
-    pub fn write(&self, ptr:*mut TimePtr<T>, tid:usize) {
+    pub fn write(&self, ptr:*mut TimePtr<T>) {
         let swapped_out = self.cur_ptr.swap(ptr, Ordering::SeqCst);
         match TimePtr::get_time(swapped_out) {
             Some(ti) => {
-                let time_slot = & self.time_keeps[tid];
+                let time_slot = & self.time_keeps.get_by_tid();
                 time_slot.cur_time.store(ti, Ordering::SeqCst);
                 time_slot.free_list.add(swapped_out);
             },
@@ -176,10 +175,10 @@ impl<T> Shared<T> {
         }
     }
     
-    pub fn read(&self, tid:usize) -> *mut TimePtr<T> {
-        self.free_run(tid);
+    pub fn read(&self) -> *mut TimePtr<T> {
+        self.free_run();
         let read_ptr = self.cur_ptr.load(Ordering::SeqCst);
-        let time_slot = & self.time_keeps[tid];
+        let time_slot = & self.time_keeps.get_by_tid();
         match TimePtr::get_time(read_ptr) {
             Some(ti) => {
                 time_slot.cur_time.store(ti, Ordering::SeqCst);
@@ -189,10 +188,10 @@ impl<T> Shared<T> {
         }
     }
 
-    pub fn update_time(&self, tid:usize) -> bool {
+    pub fn update_time(&self) -> bool {
         match TimePtr::get_time(self.cur_ptr.load(Ordering::SeqCst)) {
             Some(ti) => {
-                self.time_keeps[tid].cur_time.store(ti, Ordering::SeqCst);
+                self.time_keeps.get_by_tid().cur_time.store(ti, Ordering::SeqCst);
                 true
             },
             None => false
@@ -205,6 +204,7 @@ impl<T> Shared<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::threading::*;
     //use std::sync::atomic::{AtomicPtr, AtomicI64, Ordering};
     #[derive(Debug, Copy, Clone)]
     struct TestType(u32);
@@ -246,27 +246,19 @@ mod tests {
     }
 
     #[test]
-    fn shared_init_works() {
-        let tcdef = get_thread_count();
-        let shared = Shared::<TestType>::new();
-        assert!(shared.t_count() == tcdef);
-        assert!(!shared.time_check(1));
-    }
-
-    #[test]
     fn shared_freerun_works() {
         // We want control of free list just for this test
         set_free_list_lim(50);
         assert!(get_thread_count() > 1);
         tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
-        shared.write(TimePtr::make(TestType(5)), 0);
-        assert!(shared.free_run(0) == 0);
-        shared.write(TimePtr::make(TestType(5)), 0);
-        assert!(shared.free_run(0) == 0);
+        let shared2 = thcall!(shared.write(TimePtr::make(TestType(5)))).join().unwrap();
+        assert!(shared2.free_run() == 0);
+        let shared3 = thcall!(shared2.write(TimePtr::make(TestType(5)))).join().unwrap();
+        assert!(shared3.free_run() == 0);
         set_free_list_lim(1);
         // still shouldn't free since other thread slots 
-        assert!(shared.free_run(0) == 0);
+        assert!(shared3.free_run() == 0);
         set_free_list_lim(FREE_LIST_DEFAULT);
     }
 
@@ -276,10 +268,10 @@ mod tests {
         assert!(get_thread_count() > 3);
         let shared = Shared::<TestType>::new();
         let to_write = TimePtr::make(TestType(5));
-        shared.write(to_write, 0);
-        shared.write(TimePtr::make(TestType(5)), 1);
-        shared.write(TimePtr::make(TestType(5)), 2);
-        assert!(!shared.time_check(TimePtr::get_time(to_write).unwrap()));
+        shared.write(to_write);
+        let shared2 = thcall!(shared.write(TimePtr::make(TestType(5)))).join().unwrap();
+        let shared3 = thcall!(shared2.write(TimePtr::make(TestType(5)))).join().unwrap();
+        assert!(!shared3.time_check(TimePtr::get_time(to_write).unwrap()));
     }
 
     #[test]
@@ -287,9 +279,9 @@ mod tests {
         tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
         let to_write = TimePtr::make(TestType(5));
-        shared.write(to_write, 0);
+        shared.write(to_write);
         assert_eq!(to_write, shared.cur_ptr.load(Ordering::SeqCst));
-        assert_eq!(to_write, shared.read(0));
+        assert_eq!(to_write, shared.read());
     }
 
     #[test]
@@ -300,12 +292,12 @@ mod tests {
         let to_write2 = TimePtr::make(TestType(1));
         let wtime1 = TimePtr::get_time(to_write1).unwrap();
         let wtime2 = TimePtr::get_time(to_write2).unwrap();
-        shared.write(to_write1, 0);
-        shared.read(0);
-        let seen_time1 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
-        shared.write(to_write2, 0);
-        shared.read(0);
-        let seen_time2 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
+        shared.write(to_write1);
+        shared.read();
+        let seen_time1 = shared.time_keeps.get_by_tid().cur_time.load(Ordering::SeqCst);
+        shared.write(to_write2);
+        shared.read();
+        let seen_time2 = shared.time_keeps.get_by_tid().cur_time.load(Ordering::SeqCst);
         assert_eq!(seen_time1, wtime1);
         assert_eq!(seen_time2, wtime2);
         assert!(seen_time1 < seen_time2);
@@ -315,10 +307,10 @@ mod tests {
     fn shared_update_time_works() {
         tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
-        shared.write(TimePtr::make(TestType(5)), 0);
-        let seen_time1 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
-        assert!(shared.update_time(0));
-        let seen_time2 = shared.time_keeps[0].cur_time.load(Ordering::SeqCst);
+        shared.write(TimePtr::make(TestType(5)));
+        let seen_time1 = shared.time_keeps.get_by_tid().cur_time.load(Ordering::SeqCst);
+        assert!(shared.update_time());
+        let seen_time2 = shared.time_keeps.get_by_tid().cur_time.load(Ordering::SeqCst);
         assert!(seen_time1 < seen_time2);
     }
 }

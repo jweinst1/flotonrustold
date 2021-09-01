@@ -1,6 +1,6 @@
 pub mod constants;
 pub mod traits;
-#[macro_use] pub mod memory;
+#[macro_use] pub mod macros;
 //pub mod settings;
 pub mod trie;
 pub mod tlocal;
