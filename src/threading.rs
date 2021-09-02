@@ -1,9 +1,9 @@
 use std::sync::atomic::{AtomicBool, AtomicUsize, AtomicPtr, Ordering};
 use std::{thread, ptr};
+use std::time::Duration;
 use std::thread::JoinHandle;
 use std::sync::Arc;
 use std::ops::Deref;
-use std::time::Duration;
 use crate::traits::*;
 
 #[derive(Debug)]
@@ -48,6 +48,14 @@ impl<T> SpSc<T> {
 			head == tail && tail.as_ref().unwrap().0.load(Ordering::SeqCst) != ptr::null_mut()
 		}
 	}
+
+    pub fn is_empty(&self) -> bool {
+        let head = self.head.load(Ordering::SeqCst);
+        let tail = self.tail.load(Ordering::SeqCst);
+        unsafe {
+            head == tail && tail.as_ref().unwrap().0.load(Ordering::SeqCst) == ptr::null_mut()
+        }
+    }
 
 	pub fn push(&self, ptr:*mut T) -> bool {
 		let head = self.head.load(Ordering::SeqCst);
@@ -163,10 +171,14 @@ impl<T: 'static> ExecUnit<T> {
 	    				Some(ptr) => func(ptr),
 	    				None => ()
 	    			}
-	    			thread::park();
+                    thread::park();
 	    		}
 	    	});
         ExecUnit{handle:Some(handle), switch:switch, queue:queue}
+    }
+
+    pub fn queue_empty(&self) -> bool {
+        self.queue.is_empty()
     }
 
     pub fn give(&self, obj:T) -> bool {
@@ -183,6 +195,7 @@ impl<T: 'static> ExecUnit<T> {
 
     pub fn stop(&mut self) {
     	self.switch.set(false);
+        self.handle.as_ref().unwrap().thread().unpark();
     	self.handle.take().unwrap().join().unwrap();
     }
 }
@@ -257,6 +270,13 @@ mod tests {
     }
 
     #[test]
+    fn spsc_is_empty_works() {
+        let qsize = 3;
+        let queue = SpSc::<TestType>::new(qsize);
+        assert!(queue.is_empty());
+    }
+
+    #[test]
     fn switch_works() {
 	    let a = Switch::new();
 	    let b = a.clone();
@@ -293,5 +313,20 @@ mod tests {
     		assert_eq!(*num, 6);
     	}
     	free!(num);
+    }
+
+    #[test]
+    fn execunit_before_stop_works() {
+        let mut eunit = ExecUnit::new(5, sample_exec_func);
+        let num = alloc!(5);
+        assert!(eunit.give_ptr(num));
+        while !eunit.queue_empty() {
+            thread::yield_now();
+        }
+        unsafe {
+            assert_eq!(*num, 6);
+        }
+        eunit.stop();
+        free!(num);
     }
 }

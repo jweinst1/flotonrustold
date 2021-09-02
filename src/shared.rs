@@ -266,7 +266,6 @@ mod tests {
     #[test]
     fn shared_timecheck_works() {
         tlocal::set_epoch();
-        assert!(get_thread_count() > 3);
         let shared = Shared::<TestType>::new();
         let to_write = TimePtr::make(TestType(5));
         shared.write(to_write);
