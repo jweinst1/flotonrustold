@@ -6,28 +6,6 @@ use std::ops::Deref;
 use std::time::Duration;
 use crate::traits::*;
 
-const THREAD_COUNT_DEFAULT:usize = 8;
-// Considered the maximum amount of threads
-static THREAD_COUNT:AtomicUsize = AtomicUsize::new(THREAD_COUNT_DEFAULT);
-// Used to gradually pass thread id to new threads
-static LAST_THREAD_ID:AtomicUsize = AtomicUsize::new(0);
-
-pub fn make_thread_id() -> usize {
-	if THREAD_COUNT.load(Ordering::SeqCst) == LAST_THREAD_ID.load(Ordering::SeqCst) {
-		panic!("Attempted to increase thread id past maximum {:?}", THREAD_COUNT.load(Ordering::SeqCst));
-	} else {
-		LAST_THREAD_ID.fetch_add(1, Ordering::SeqCst)
-	}
-}
-
-pub fn get_thread_count() -> usize {
-    THREAD_COUNT.load(Ordering::SeqCst)
-}
-
-pub fn set_thread_count(count:usize) {
-    THREAD_COUNT.store(count, Ordering::SeqCst);
-}
-
 #[derive(Debug)]
 struct SPSCNode<T>(AtomicPtr<T>, AtomicPtr<SPSCNode<T>>);
 

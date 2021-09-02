@@ -249,9 +249,10 @@ mod tests {
     fn shared_freerun_works() {
         // We want control of free list just for this test
         set_free_list_lim(50);
-        assert!(get_thread_count() > 1);
         tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
+        // init test
+        assert!(!shared.time_check(0));
         let shared2 = thcall!(shared.write(TimePtr::make(TestType(5)))).join().unwrap();
         assert!(shared2.free_run() == 0);
         let shared3 = thcall!(shared2.write(TimePtr::make(TestType(5)))).join().unwrap();
