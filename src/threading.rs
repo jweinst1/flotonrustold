@@ -167,9 +167,8 @@ impl<T: 'static> ExecUnit<T> {
 	    				}
 	    				break;
 	    			}
-	    			match tqueue.pop() {
-	    				Some(ptr) => func(ptr),
-	    				None => ()
+	    			while let Some(ptr) = tqueue.pop() {
+	    				func(ptr);
 	    			}
                     thread::park();
 	    		}
@@ -214,7 +213,7 @@ impl<T: 'static> ExecUnitGroup<T> {
         ExecUnitGroup{members:units}
     }
 
-    pub fn assign_ptr(&self, ptr:*mut T) -> Option<usize> {
+    pub fn assign_ptr(&self, ptr:*mut T) -> Option<usize> { // todo distribution
         for i in 0..self.members.len() {
             if self.members[i].give_ptr(ptr) {
                 return Some(i);
@@ -386,5 +385,32 @@ mod tests {
         }
         egroup.stop_all();
         free!(num);
+    }
+
+    #[test]
+    fn execgroup_assign_retried_works() {
+        let mut egroup = ExecUnitGroup::new(3, 3, sample_exec_func);
+        let num = alloc!(30);
+        let num2 = alloc!(15);
+        match egroup.assign_retried(num, 5, Duration::from_millis(100)) {
+            Some(n) => assert_eq!(n, 0),
+            None => panic!("Expected group {:?} to have an empty queue", egroup)
+        }
+        match egroup.assign_retried(num2, 5, Duration::from_millis(100)) {
+            Some(n) => assert_eq!(n, 0),
+            None => panic!("Expected group {:?} to have an empty queue", egroup)
+        }
+        while !egroup.members[0].queue_empty() {
+            thread::yield_now();
+        }
+        unsafe {
+            assert_eq!(*num, 31);
+        }
+        unsafe {
+            assert_eq!(*num2, 16);
+        }
+        egroup.stop_all();
+        free!(num);
+        free!(num2);
     }
 }
