@@ -6,13 +6,6 @@ use crate::tlocal;
 use crate::traits::NewType;
 use crate::trie::IntTrie;
 
-static FREE_LIST_DEFAULT:u32 = 10;
-static FREE_LIST_LIM:AtomicU32 = AtomicU32::new(FREE_LIST_DEFAULT);
-
-pub fn set_free_list_lim(limit:u32) {
-    FREE_LIST_LIM.store(limit, Ordering::SeqCst);
-}
-
 #[derive(Debug)]
 pub struct TimePtr<T>(pub T, pub u64);
 
@@ -132,7 +125,7 @@ impl<T> Shared<T> {
 
     pub fn free_run(&self) -> u32  {
         let flist = &self.time_keeps.get_by_tid().free_list;
-        if flist.count() < FREE_LIST_LIM.load(Ordering::SeqCst) {
+        if flist.count() < tlocal::free_lim() {
             return 0;
         }
         //println!("Running free list on thread: {}", tid);
@@ -248,7 +241,7 @@ mod tests {
     #[test]
     fn shared_freerun_works() {
         // We want control of free list just for this test
-        set_free_list_lim(50);
+        tlocal::set_free_lim(50);
         tlocal::set_epoch();
         let shared = Shared::<TestType>::new();
         // init test
@@ -257,10 +250,10 @@ mod tests {
         assert!(shared2.free_run() == 0);
         let shared3 = thcall!(shared2.write(TimePtr::make(TestType(5)))).join().unwrap();
         assert!(shared3.free_run() == 0);
-        set_free_list_lim(1);
+        tlocal::set_free_lim(1);
         // still shouldn't free since other thread slots 
         assert!(shared3.free_run() == 0);
-        set_free_list_lim(FREE_LIST_DEFAULT);
+        tlocal::set_free_lim(3);
     }
 
     #[test]

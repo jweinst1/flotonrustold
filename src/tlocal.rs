@@ -3,6 +3,7 @@ use std::thread;
 use std::time::Instant;
 use std::mem::MaybeUninit;
 use std::convert::TryFrom;
+use std::cell::RefCell;
 
 static THREAD_CNTR:AtomicUsize = AtomicUsize::new(0);
 
@@ -42,6 +43,16 @@ pub fn time() -> u64 {
 				Err(e) => panic!("Could not convert monotonic tick to u64, err: {:?}", e)
 			}
 	})
+}
+
+thread_local!(static FREE_LIST_L: RefCell<u32> = RefCell::new(3));
+
+pub fn free_lim() -> u32 {
+    FREE_LIST_L.with(|x| { *x.borrow() })
+}
+
+pub fn set_free_lim(val:u32) {
+    FREE_LIST_L.with(|x| { *x.borrow_mut() = val; })
 }
 
 #[cfg(test)]
