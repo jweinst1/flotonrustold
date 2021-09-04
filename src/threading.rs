@@ -200,6 +200,46 @@ impl<T: 'static> ExecUnit<T> {
     }
 }
 
+#[derive(Debug)]
+pub struct ExecUnitGroup<T> {
+    members:Vec<ExecUnit<T>>
+}
+
+impl<T: 'static> ExecUnitGroup<T> {
+    pub fn new(start_size:usize, qsize:usize, func:fn(*mut T)) -> ExecUnitGroup<T> {
+        let mut units = vec![];
+        for i in 0..start_size {
+            units.push(ExecUnit::new(qsize, func))
+        }
+        ExecUnitGroup{members:units}
+    }
+
+    pub fn assign_ptr(&self, ptr:*mut T) -> Option<usize> {
+        for i in 0..self.members.len() {
+            if self.members[i].give_ptr(ptr) {
+                return Some(i);
+            }
+        }
+        return None;
+    }
+
+    pub fn assign_retried(&self, ptr:*mut T, times:usize, pause:Duration) -> Option<usize> {
+        for i in 0..times {
+            match self.assign_ptr(ptr) {
+                Some(n) => return Some(n),
+                None => thread::park_timeout(pause)
+            }
+        }
+        return None;
+    }
+
+    pub fn stop_all(&mut self) {
+        for i in 0..self.members.len() {
+            self.members[i].stop();
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -327,6 +367,24 @@ mod tests {
             assert_eq!(*num, 6);
         }
         eunit.stop();
+        free!(num);
+    }
+
+    #[test]
+    fn execgroup_assign_ptr_works() {
+        let mut egroup = ExecUnitGroup::new(3, 3, sample_exec_func);
+        let num = alloc!(30);
+        match egroup.assign_ptr(num) {
+            Some(n) => assert_eq!(n, 0),
+            None => panic!("Expected group {:?} to have an empty queue", egroup)
+        }
+        while !egroup.members[0].queue_empty() {
+            thread::yield_now();
+        }
+        unsafe {
+            assert_eq!(*num, 31);
+        }
+        egroup.stop_all();
         free!(num);
     }
 }

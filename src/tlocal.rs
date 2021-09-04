@@ -50,6 +50,7 @@ mod tests {
 
     #[test]
     fn epoch_works() {
+        set_epoch();
     	let t1 = time();
     	let handle = thread::spawn({move ||
     		assert!(time() > t1)

@@ -1,47 +1,53 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, AtomicPtr, Ordering};
 use std::{thread, ptr};
 use std::net::{TcpListener, TcpStream};
-use crate::traits::*;
-use crate::threading::*;
+use std::time::Duration;
+use crate::threading::{Switch, ExecUnit};
+use crate::dbstates;
 
 
 struct TcpServer {
 	port:u16,
 	addr:String,
-	core:AtomicPtr<TcpListener>,
-	running:AtomicBool
-}
-
-impl NewType for TcpServer {
-	fn new() -> Self {
-		TcpServer{
-			port:8080,
-			addr:String::from("127.0.0.1"),
-			core:AtomicPtr::new(ptr::null_mut()),
-			running:AtomicBool::new(false)
-		}
-	}
+	core:TcpListener,
+	ready:Switch,
+	workers:Vec<ExecUnit<TcpStream>>,
+	acceptor:Option<JoinHandle<()>>
 }
 
 impl TcpServer {
-	pub fn new(addr:String, port:u16) -> TcpServer {
+	pub fn new(init_th_count:usize, addr:String, port:u16) -> TcpServer {
+		let ready = Switch::new();
+		let rswitch = switch.clone();
+		let handle = thread::spawn({move ||
+			while !rswitch.get() {
+				thread::park_timeout(Duration::from_millis(500));
+			}
+			loop {
+
+			}
+		});
+		let mut threads = vec![];
+		for i in 0..init_th_count {
+			threads.push(ExecUnit::new(3, some_handling));
+		}
 		TcpServer{
 			port:port,
 			addr:addr,
-			core:AtomicPtr::new(ptr::null_mut()),
-			running:AtomicBool::new(false)
+			core:TcpListener::bind(addr, port),
+			ready:rswitch,
+			workers:
+			accepter:Some(handle)
 		}
 	}
 
-	pub fn start(&self) {
-		assert!(!self.running.load(Ordering::SeqCst));
-		self.core.store(alloc!(TcpListener::bind((self.addr.as_str(), self.port)).unwrap()), Ordering::SeqCst);
-		self.running.store(true, Ordering::SeqCst);
+	pub fn start(self) {
+		assert!(!self.ready.get());
+		self.ready.set(true);
 	}
 
-	pub fn stop(&self) {
-		assert!(self.running.load(Ordering::SeqCst));
-		self.running.store(false, Ordering::SeqCst);
-		free!(self.core.load(Ordering::SeqCst));
+	pub fn stop(&mut self) {
+		// todo
+		self.handle.take().unwrap().join().unwrap();
 	}
 }
