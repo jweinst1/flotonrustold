@@ -239,11 +239,48 @@ impl<T: 'static> ExecUnitGroup<T> {
     }
 }
 
+// Intended to do gradual backoff for non blocking operations
+// should never be used when holding a shared resource
+#[derive(Debug)]
+pub struct Parker {
+    min_time:u64,
+    max_time:u64,
+    segment:u64,
+    cur_time:u64
+}
+
+impl Parker {
+    pub fn new(min_time:u64, max_time:u64, segment:u64) -> Parker {
+        Parker{min_time:min_time, max_time:max_time, segment:segment, cur_time:min_time}
+    }
+
+    pub fn do_park(&mut self, result:bool) {
+        if result {
+            self.cur_time = self.min_time;
+        } else if self.cur_time <= self.max_time {
+            self.cur_time += self.segment;
+
+        }
+        thread::park_timeout(Duration::from_millis(self.cur_time));
+    }
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;
     #[derive(Debug, Copy, Clone)]
     struct TestType(u32);
+
+    #[test]
+    fn parker_works() {
+        let mut p = Parker::new(10, 100, 10);
+        assert_eq!(p.cur_time, p.min_time);
+        p.do_park(false);
+        assert_eq!(p.cur_time, p.min_time + p.segment);
+        p.do_park(true);
+        assert_eq!(p.cur_time, p.min_time);
+    }
 
     #[test]
     fn make_ring_works() {

@@ -2,7 +2,8 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, AtomicPtr, Ordering}
 use std::{thread, ptr};
 use std::net::{TcpListener, TcpStream, Shutdown};
 use std::time::Duration;
-use crate::threading::{Switch, TVal, ExecUnitGroup};
+use std::io;
+use crate::threading::{Switch, TVal, ExecUnitGroup, Parker};
 use crate::traits::*;
 use std::io::prelude::*;
 
@@ -17,7 +18,7 @@ struct TcpServer {
 }
 
 impl TcpServer {
-	pub fn new(init_th_count:usize, th_qsize:usize, addr:&String, port:u16, func:fn(*mut TcpStream)) -> TcpServer {
+	pub fn new(init_th_count:usize, th_qsize:usize, addr:&String, port:u16, mut parker:Parker, func:fn(*mut TcpStream)) -> TcpServer {
 		let ready = Switch::new();
 		let rswitch = ready.clone();
 		let shut = Switch::new();
@@ -44,9 +45,15 @@ impl TcpServer {
 							None => {
 								// can't handle it
 								free!(req);
+								parker.do_park(false);
 							},
-							Some(_) => println!("processed request from {:?}", addr)
+							Some(_) => {
+								parker.do_park(true);
+							}
 						}
+					},
+					Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
+						parker.do_park(false);
 					},
 					Err(e) => println!("Got error from socket {:?}", e)
 				}
@@ -96,7 +103,8 @@ mod tests {
     fn echo_works() {
         let serv_addr = String::from("127.0.0.1");
         let serv_port = 8080;
-        let mut server = TcpServer::new(3, 5, &serv_addr, serv_port, do_echo);
+        let pker = Parker::new(5, 200, 15);
+        let mut server = TcpServer::new(3, 5, &serv_addr, serv_port, pker, do_echo);
         server.start();
         let mut bits = [0;4];
         let mut resp = [0;4];
