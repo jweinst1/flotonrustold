@@ -4,6 +4,7 @@ use std::time::Duration;
 use std::thread::JoinHandle;
 use std::sync::Arc;
 use std::ops::Deref;
+use crate::circular::CircleList;
 use crate::traits::*;
 
 #[derive(Debug)]
@@ -210,21 +211,19 @@ impl<T: 'static> ExecUnit<T> {
 
 #[derive(Debug)]
 pub struct ExecUnitGroup<T> {
-    members:Vec<ExecUnit<T>>
+    members:CircleList<ExecUnit<T>>
 }
 
 impl<T: 'static> ExecUnitGroup<T> {
     pub fn new(start_size:usize, qsize:usize, func:fn(*mut T)) -> ExecUnitGroup<T> {
-        let mut units = vec![];
-        for i in 0..start_size {
-            units.push(ExecUnit::new(qsize, func))
-        }
-        ExecUnitGroup{members:units}
+        // Trick to form a clonable unit, but not start a thread for it
+        let template = ExecUnit{handle:None, switch:Switch::new(), queue:TVal::new(SpSc{head:newptr!(), tail:newptr!(), size:qsize}), func:func};
+        ExecUnitGroup{members:CircleList::new(&template, start_size)}
     }
 
     pub fn assign_ptr(&self, ptr:*mut T) -> Option<usize> { // todo distribution
         for i in 0..self.members.len() {
-            if self.members[i].give_ptr(ptr) {
+            if self.members.next().give_ptr(ptr) {
                 return Some(i);
             }
         }
@@ -232,7 +231,7 @@ impl<T: 'static> ExecUnitGroup<T> {
     }
 
     pub fn assign_retried(&self, ptr:*mut T, times:usize, pause:Duration) -> Option<usize> {
-        for i in 0..times {
+        for _ in 0..times {
             match self.assign_ptr(ptr) {
                 Some(n) => return Some(n),
                 None => thread::park_timeout(pause)
@@ -242,8 +241,10 @@ impl<T: 'static> ExecUnitGroup<T> {
     }
 
     pub fn stop_all(&mut self) {
-        for i in 0..self.members.len() {
-            self.members[i].stop();
+        for _ in 0..self.members.len() {
+            unsafe {
+                self.members.next_ptr().as_mut().unwrap().get_mut().stop();
+            }
         }
     }
 }
@@ -423,7 +424,10 @@ mod tests {
             Some(n) => assert_eq!(n, 0),
             None => panic!("Expected group {:?} to have an empty queue", egroup)
         }
-        while !egroup.members[0].queue_empty() {
+        egroup.members.next();
+        egroup.members.next();
+        let chosen_unit = egroup.members.next();
+        while !chosen_unit.queue_empty() {
             thread::yield_now();
         }
         unsafe {
@@ -446,7 +450,14 @@ mod tests {
             Some(n) => assert_eq!(n, 0),
             None => panic!("Expected group {:?} to have an empty queue", egroup)
         }
-        while !egroup.members[0].queue_empty() {
+        egroup.members.next();
+        egroup.members.next();
+        let chosen_unit = egroup.members.next();
+        while !chosen_unit.queue_empty() {
+            thread::yield_now();
+        }
+        let chosen_unit2 = egroup.members.next();
+        while !chosen_unit2.queue_empty() {
             thread::yield_now();
         }
         unsafe {

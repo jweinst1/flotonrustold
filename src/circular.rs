@@ -1,8 +1,8 @@
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicUsize, Ordering};
 use std::ptr;
 
 #[derive(Debug)]
-struct CircleNode<T>(T, AtomicPtr<CircleNode<T>>);
+pub struct CircleNode<T>(T, AtomicPtr<CircleNode<T>>);
 
 impl<T: Clone> CircleNode<T> {
 	#[inline]
@@ -22,14 +22,18 @@ impl<T: Clone> CircleNode<T> {
 		ptref!(cur).1.store(base, Ordering::SeqCst);
 		base
 	}
+
+	pub fn get_mut(&mut self) -> &mut T {
+		&mut self.0
+	}
 }
 
 #[derive(Debug)]
-struct CircleList<T>(AtomicPtr<CircleNode<T>>);
+pub struct CircleList<T>(AtomicPtr<CircleNode<T>>, AtomicUsize);
 
 impl<T: Clone> CircleList<T> {
 	pub fn new(val:&T, size:usize) -> CircleList<T> {
-		CircleList(AtomicPtr::new(CircleNode::make_ring(val, size)))
+		CircleList(AtomicPtr::new(CircleNode::make_ring(val, size)), AtomicUsize::new(size))
 	}
 
 	pub fn next(&self) -> &T {
@@ -39,6 +43,19 @@ impl<T: Clone> CircleList<T> {
 			self.0.store(rcur.1.load(Ordering::SeqCst), Ordering::SeqCst);
 			return &rcur.0;
 		}
+	}
+
+	pub fn next_ptr(&self) -> *mut CircleNode<T> {
+		let cur = self.0.load(Ordering::SeqCst);
+		unsafe {
+			let rcur = cur.as_ref().unwrap();
+			self.0.store(rcur.1.load(Ordering::SeqCst), Ordering::SeqCst);
+			return cur;
+		}
+	}
+
+	pub fn len(&self) -> usize {
+		self.1.load(Ordering::SeqCst)
 	}
 }
 
