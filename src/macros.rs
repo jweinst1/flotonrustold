@@ -39,5 +39,11 @@ macro_rules! thcall {
             $a.$($b)+;
             $a
         })
+    };
+
+    ($($b:tt)+) => {
+        thread::spawn(||{ 
+            $($b)+;
+        })
     }
 }

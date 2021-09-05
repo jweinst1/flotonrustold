@@ -97,6 +97,21 @@ mod tests {
     	free!(obj);
     }
 
+    struct Stream(TcpStream);
+
+    impl Stream {
+    	fn readwrite(&mut self) {
+    		let bits = [4, 2, 88, 44];
+    		let mut resp = [0;4];
+    		self.0.write(&bits);
+    		self.0.read(&mut resp);
+	        assert_eq!(resp[0], bits[0]);
+	        assert_eq!(resp[1], bits[1]);
+	        assert_eq!(resp[2], bits[2]);
+	        assert_eq!(resp[3], bits[3]);
+    	}
+    }
+
     #[test]
     fn echo_works() {
         let serv_addr = String::from("127.0.0.1");
@@ -117,6 +132,26 @@ mod tests {
         assert_eq!(resp[1], bits[1]);
         assert_eq!(resp[2], bits[2]);
         assert_eq!(resp[3], bits[3]);
+        server.stop();
+    }
+
+    #[test]
+    fn mt_echo_works() {
+        let serv_addr = String::from("127.0.0.1");
+        let serv_port = 8087;
+        let pker = Parker::new(5, 200, 15);
+        let mut server = TcpServer::new(3, 5, &serv_addr, serv_port, pker, do_echo);
+        server.start();
+        let t1 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t2 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t3 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t4 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t5 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        t1.join().unwrap();
+        t2.join().unwrap();
+        t3.join().unwrap();
+        t4.join().unwrap();
+        t5.join().unwrap();
         server.stop();
     }
 }
