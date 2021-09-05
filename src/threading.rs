@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicPtr, Ordering};
 use std::{thread, ptr};
 use std::time::Duration;
 use std::thread::JoinHandle;

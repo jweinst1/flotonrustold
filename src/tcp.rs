@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, AtomicPtr, Ordering};
-use std::{thread, ptr};
+use std::thread;
 use std::net::{TcpListener, TcpStream, Shutdown};
 use std::time::Duration;
 use std::io;
@@ -7,8 +7,9 @@ use crate::threading::{Switch, TVal, ExecUnitGroup, Parker};
 use crate::traits::*;
 use std::io::prelude::*;
 
+pub struct TcpServerStream<T>(TcpStream, T /*Context type*/);
 
-struct TcpServer {
+pub struct TcpServer {
 	port:u16,
 	addr:String,
 	core:TcpListener,
@@ -18,7 +19,7 @@ struct TcpServer {
 }
 
 impl TcpServer {
-	pub fn new(init_th_count:usize, th_qsize:usize, addr:&String, port:u16, mut parker:Parker, func:fn(*mut TcpStream)) -> TcpServer {
+	pub fn new<T:'static + NewType>(init_th_count:usize, th_qsize:usize, addr:&String, port:u16, mut parker:Parker, func:fn(*mut TcpServerStream<T>)) -> TcpServer {
 		let ready = Switch::new();
 		let rswitch = ready.clone();
 		let shut = Switch::new();
@@ -40,7 +41,7 @@ impl TcpServer {
 				match tlistener.accept() {
 					Ok((_socket, addr)) => {
 						println!("Got request from {:?}", addr);
-						let req = alloc!(_socket);
+						let req = alloc!(TcpServerStream(_socket, T::new()));
 						match egroup.assign_retried(req, 10, Duration::from_millis(100)) {
 							None => {
 								// can't handle it
@@ -86,12 +87,18 @@ impl TcpServer {
 mod tests {
     use super::*;
 
-    fn do_echo(obj:*mut TcpStream) {
+    struct Context(u8);
+
+    impl NewType for Context {
+    	fn new() -> Self { Context(5) }
+    }
+
+    fn do_echo(obj:*mut TcpServerStream<Context>) {
     	unsafe {
     		let mut buf = [0;4];
-    		let mut robj = obj.as_ref().unwrap();
-    		robj.read(&mut buf);
-    		robj.write(&buf);
+    		let robj = obj.as_mut().unwrap();
+    		robj.0.read(&mut buf);
+    		robj.0.write(&buf);
     		//robj.shutdown(Shutdown::Both);
     	}
     	free!(obj);

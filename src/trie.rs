@@ -423,7 +423,7 @@ mod tests {
     fn check_if_get_by_tid_works() {
     	let b = IntTrie::<TimePoint>::new(4);
     	let current_tid = tlocal::tid();
-    	let val = b.get_by_tid();
+    	let _val = b.get_by_tid();
     	let regular_node = b.get_node(current_tid);
     	assert!(nonull!(regular_node.0.load(Ordering::SeqCst)));
     }

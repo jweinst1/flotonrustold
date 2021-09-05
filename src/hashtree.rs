@@ -2,7 +2,6 @@ use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicU32, Ordering};
 use std::ptr;
 use std::fmt::Debug;
 use std::ops::Deref;
-use std::convert::TryFrom;
 use crate::tlocal;
 use crate::traits::NewType;
 
