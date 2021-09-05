@@ -91,9 +91,7 @@ mod tests {
     		let mut buf = [0;4];
     		let mut robj = obj.as_ref().unwrap();
     		robj.read(&mut buf);
-    		println!("did the read");
     		robj.write(&buf);
-    		println!("did the write back");
     		//robj.shutdown(Shutdown::Both);
     	}
     	free!(obj);

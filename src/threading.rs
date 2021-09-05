@@ -32,13 +32,14 @@ impl<T> SPSCNode<T> {
 #[derive(Debug)]
 pub struct SpSc<T> {
 	head:AtomicPtr<SPSCNode<T>>,
-	tail:AtomicPtr<SPSCNode<T>>
+	tail:AtomicPtr<SPSCNode<T>>,
+    pub size:usize
 }
 
 impl<T> SpSc<T> {
 	pub fn new(size:usize) -> SpSc<T> {
 		let ring = SPSCNode::<T>::make_ring(size);
-		SpSc{head:AtomicPtr::new(ring), tail:AtomicPtr::new(ring)}
+		SpSc{head:AtomicPtr::new(ring), tail:AtomicPtr::new(ring), size:size}
 	}
 
 	pub fn is_full(&self) -> bool {
@@ -147,7 +148,15 @@ impl<T> Deref for TVal<T> {
 pub struct ExecUnit<T> {
 	handle:Option<JoinHandle<()>>,
 	switch:Switch,
-	queue:TVal<SpSc<T>>
+	queue:TVal<SpSc<T>>,
+    func:fn(*mut T)
+}
+
+impl<T: 'static> Clone for ExecUnit<T> {
+    // Only clones queue size and function, does not copy the thread or current jobs
+    fn clone(&self) -> Self {
+        ExecUnit::<T>::new(self.queue.size, self.func)
+    }
 }
 
 impl<T: 'static> ExecUnit<T> {
@@ -173,7 +182,7 @@ impl<T: 'static> ExecUnit<T> {
                     thread::park();
 	    		}
 	    	});
-        ExecUnit{handle:Some(handle), switch:switch, queue:queue}
+        ExecUnit{handle:Some(handle), switch:switch, queue:queue, func:func}
     }
 
     pub fn queue_empty(&self) -> bool {
