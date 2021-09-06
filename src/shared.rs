@@ -246,9 +246,9 @@ mod tests {
         let mut shared = Shared::<TestType>::new();
         // init test
         assert!(!shared.time_check(0));
-        let t1 = thcall!(shared.write(TimePtr::make(TestType(5))));
+        let t1 = thcall!(5, shared.write(TimePtr::make(TestType(5))));
         assert!(shared.free_run() == 0);
-        let t2 = thcall!(shared.write(TimePtr::make(TestType(5))));
+        let t2 = thcall!(5, shared.write(TimePtr::make(TestType(5))));
         assert!(shared.free_run() == 0);
         tlocal::set_free_lim(1);
         // still shouldn't free since other thread slots 
@@ -264,8 +264,8 @@ mod tests {
         let mut shared = Shared::<TestType>::new();
         let to_write = TimePtr::make(TestType(5));
         shared.write(to_write);
-        let t1 = thcall!(shared.write(TimePtr::make(TestType(5))));
-        let t2 = thcall!(shared.write(TimePtr::make(TestType(5))));
+        let t1 = thcall!(5, shared.write(TimePtr::make(TestType(5))));
+        let t2 = thcall!(5, shared.write(TimePtr::make(TestType(5))));
         assert!(!shared.time_check(TimePtr::get_time(to_write).unwrap()));
         t1.join().unwrap();
         t2.join().unwrap();

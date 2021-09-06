@@ -33,6 +33,18 @@ macro_rules! free {
  * and return the handle. This is primarily used for unit tests.
  */
 macro_rules! thcall {
+    // Fires off a thread that runs the statement some number of times
+    ($times:expr, $a:ident.$($b:tt)+) => {
+        {
+            let rptr = AtomicPtr::new(&mut $a);
+            thread::spawn(move || {
+                for _ in  0..($times) {
+                     unsafe { rptr.load(Ordering::SeqCst).as_ref().unwrap().$($b)+; }
+                }
+            })
+        }
+    };
+
     ($a:ident.$($b:tt)+) => {
         {
             let rptr = AtomicPtr::new(&mut $a);
@@ -44,5 +56,5 @@ macro_rules! thcall {
         thread::spawn(||{ 
             $($b)+;
         })
-    }
+    };
 }

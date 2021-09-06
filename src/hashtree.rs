@@ -215,7 +215,7 @@ mod tests {
     #[test]
     fn insert_works() {
     	tlocal::set_epoch();
-    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
+    	let mut tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
     	let key = "Hello!";
     	let v = tree.insert_string(key);
     	v.set(6);
@@ -234,6 +234,21 @@ mod tests {
     	let found = tree.find_string(key).unwrap();
     	assert_eq!(v.get(), found.get());
     	assert_eq!(found.get(), 5);
+    }
+
+    #[test]
+    fn mt_find_works() {
+    	tlocal::set_epoch();
+    	let mut tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
+    	let t1 = thcall!(10, tree.insert_string("Hapy"));
+    	let t2 = thcall!(10, tree.insert_string("Sad"));
+    	tree.insert_string("Happy");
+    	match tree.find_string("Happy") {
+    		None => panic!("Didn't find string 'Happy'"),
+    		_ => ()
+    	}
+    	t1.join().unwrap();
+    	t2.join().unwrap();
     }
 
     #[test]

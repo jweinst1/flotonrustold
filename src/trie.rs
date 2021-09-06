@@ -1,5 +1,5 @@
 use std::sync::atomic::{AtomicUsize, AtomicPtr, Ordering};
-use std::ptr;
+use std::{ptr, thread};
 use crate::traits::*;
 use crate::tlocal;
 
@@ -373,6 +373,28 @@ mod tests {
     		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
     		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
     	}
+    }
+
+    #[test]
+    fn mt_inode_get_works() {
+    	let mut node = IntNode::<u32>::new();
+    	let t1 = thcall!(10, node.get_seq(16));
+    	let t2 = thcall!(10, node.get_seq(11));
+    	let t3 = thcall!(10, node.get_seq(19));
+
+    	node.get_seq(13);
+    	unsafe {
+     		let node2 = node.1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[0].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap()
+    			         .1[1].load(Ordering::SeqCst).as_ref().unwrap();
+    		assert!(isnull!(node2.1[0].load(Ordering::SeqCst)));
+    		assert!(isnull!(node2.1[1].load(Ordering::SeqCst)));
+    	}
+
+    	t1.join().unwrap();
+    	t2.join().unwrap();
+    	t3.join().unwrap();
     }
 
     #[derive(Debug)]
