@@ -81,7 +81,7 @@ mod tests {
     #[test]
     fn circ_list_next_works() {
     	let base = TestType(7);
-    	let mut list = CircleList::new(&base, 10);
+    	let list = CircleList::new(&base, 10);
     	unsafe {
     		(*list.0.load(Ordering::SeqCst)).0 = TestType(1);
     	}

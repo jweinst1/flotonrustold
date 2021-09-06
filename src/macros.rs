@@ -1,5 +1,4 @@
-use std::sync::atomic::AtomicPtr;
-use std::{ptr, thread};
+
 
 macro_rules! ptref {
 	($obj:expr) => { unsafe { $obj.as_ref().unwrap() } }
@@ -35,10 +34,10 @@ macro_rules! free {
  */
 macro_rules! thcall {
     ($a:ident.$($b:tt)+) => {
-        thread::spawn(||{ 
-            $a.$($b)+;
-            $a
-        })
+        {
+            let rptr = AtomicPtr::new(&mut $a);
+            thread::spawn(move || { unsafe { rptr.load(Ordering::SeqCst).as_ref().unwrap().$($b)+; } })
+        }
     };
 
     ($($b:tt)+) => {

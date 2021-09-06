@@ -243,28 +243,32 @@ mod tests {
         // We want control of free list just for this test
         tlocal::set_free_lim(50);
         tlocal::set_epoch();
-        let shared = Shared::<TestType>::new();
+        let mut shared = Shared::<TestType>::new();
         // init test
         assert!(!shared.time_check(0));
-        let shared2 = thcall!(shared.write(TimePtr::make(TestType(5)))).join().unwrap();
-        assert!(shared2.free_run() == 0);
-        let shared3 = thcall!(shared2.write(TimePtr::make(TestType(5)))).join().unwrap();
-        assert!(shared3.free_run() == 0);
+        let t1 = thcall!(shared.write(TimePtr::make(TestType(5))));
+        assert!(shared.free_run() == 0);
+        let t2 = thcall!(shared.write(TimePtr::make(TestType(5))));
+        assert!(shared.free_run() == 0);
         tlocal::set_free_lim(1);
         // still shouldn't free since other thread slots 
-        assert!(shared3.free_run() == 0);
+        assert!(shared.free_run() == 0);
         tlocal::set_free_lim(3);
+        t1.join().unwrap();
+        t2.join().unwrap();
     }
 
     #[test]
     fn shared_timecheck_works() {
         tlocal::set_epoch();
-        let shared = Shared::<TestType>::new();
+        let mut shared = Shared::<TestType>::new();
         let to_write = TimePtr::make(TestType(5));
         shared.write(to_write);
-        let shared2 = thcall!(shared.write(TimePtr::make(TestType(5)))).join().unwrap();
-        let shared3 = thcall!(shared2.write(TimePtr::make(TestType(5)))).join().unwrap();
-        assert!(!shared3.time_check(TimePtr::get_time(to_write).unwrap()));
+        let t1 = thcall!(shared.write(TimePtr::make(TestType(5))));
+        let t2 = thcall!(shared.write(TimePtr::make(TestType(5))));
+        assert!(!shared.time_check(TimePtr::get_time(to_write).unwrap()));
+        t1.join().unwrap();
+        t2.join().unwrap();
     }
 
     #[test]
