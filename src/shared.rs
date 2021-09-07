@@ -43,6 +43,19 @@ impl<T> FreeNode<T> {
 #[derive(Debug)]
 struct FreeList<T>(AtomicPtr<FreeNode<T>>, AtomicU32);
 
+impl<T> Drop for FreeList<T> {
+    fn drop(&mut self) {
+        let mut cur_ptr = self.0.load(Ordering::Relaxed);
+        while let Some(noderef) = unsafe {cur_ptr.as_ref()} {
+            let old_ptr = cur_ptr;
+            let old_time_ptr = noderef.0.load(Ordering::Relaxed);
+            free!(old_time_ptr);
+            cur_ptr = noderef.1.load(Ordering::Relaxed);
+            free!(old_ptr);
+        }
+    }
+}
+
 impl<T> NewType for FreeList<T> {
     fn new() -> Self {
         FreeList(AtomicPtr::new(FreeNode::new()), AtomicU32::new(0))

@@ -13,8 +13,21 @@ impl<T> NewType for IntNode<T> {
 	}
 }
 
-impl<T: NewType> IntNode<T> {
-	// little endian style
+impl<T> IntNode<T> {
+	fn do_drop(ptr:*mut IntNode<T>) {
+		if nonull!(ptr) {
+			let rptr = unsafe {  ptr.as_ref().unwrap() };
+			let vptr = rptr.0.load(Ordering::Relaxed);
+			if nonull!(vptr) {
+				free!(vptr);
+			}
+			IntNode::do_drop(rptr.1[0].load(Ordering::Relaxed));
+			IntNode::do_drop(rptr.1[1].load(Ordering::Relaxed));
+			free!(ptr);
+		}
+	}
+
+	// little endian style 1 <- 1 <- 0 
 	#[inline]
 	pub fn get_0(&self) -> &IntNode<T> {
 		let got_ptr = self.1[0].load(Ordering::SeqCst);
@@ -158,6 +171,13 @@ impl<T: NewType> IntNode<T> {
 #[derive(Debug)]
 pub struct IntTrie<T>{
 	nodes:IntNode<T>
+}
+
+impl<T> Drop for IntTrie<T> {
+    fn drop(&mut self) {
+        IntNode::do_drop(self.nodes.1[0].load(Ordering::Relaxed));
+        IntNode::do_drop(self.nodes.1[1].load(Ordering::Relaxed));
+    }
 }
 
 
