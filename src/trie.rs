@@ -1,5 +1,6 @@
 use std::sync::atomic::{AtomicUsize, AtomicPtr, Ordering};
 use std::{ptr, thread};
+use std::time::Duration;
 use crate::traits::*;
 use crate::tlocal;
 
@@ -448,6 +449,35 @@ mod tests {
     	let _val = b.get_by_tid();
     	let regular_node = b.get_node(current_tid);
     	assert!(nonull!(regular_node.0.load(Ordering::SeqCst)));
+    }
+
+    struct MtVal(AtomicUsize);
+
+    impl NewType for MtVal {
+    	fn new() -> Self { MtVal(AtomicUsize::new(0)) }
+    }
+
+    impl MtVal {
+    	fn assert_on_tid(&self) {
+    		let swapped = self.0.swap(tlocal::tid(), Ordering::SeqCst);
+    		assert!(swapped == 0 || swapped == tlocal::tid());
+    	}
+    }
+
+    #[test]
+    fn mt_get_by_tid_works() {
+    	// This test insures no race conditions in constructing tries in a mt
+    	// context
+    	let mut b = IntTrie::<MtVal>::new(20);
+    	let t1 = thcall!(140, 5, b.get_by_tid().assert_on_tid());
+    	let t2 = thcall!(80, 5, b.get_by_tid().assert_on_tid());
+    	let t3 = thcall!(40, 5, b.get_by_tid().assert_on_tid());
+    	let t4 = thcall!(20, 5, b.get_by_tid().assert_on_tid());
+    	b.get_by_tid().assert_on_tid();
+    	t1.join().unwrap();
+    	t2.join().unwrap();
+    	t3.join().unwrap();
+    	t4.join().unwrap();
     }
 }
 
