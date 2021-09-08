@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn insert_works() {
     	tlocal::set_epoch();
-    	let mut tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
+    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
     	let key = "Hello!";
     	let v = tree.insert_string(key);
     	v.set(6);

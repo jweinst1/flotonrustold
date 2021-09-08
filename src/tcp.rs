@@ -149,11 +149,11 @@ mod tests {
         let pker = Parker::new(5, 200, 15);
         let mut server = TcpServer::new(3, 5, &serv_addr, serv_port, pker, do_echo);
         server.start();
-        let t1 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
-        let t2 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
-        let t3 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
-        let t4 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
-        let t5 = thcall!(Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t1 = thcall!(80, 5, Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t2 = thcall!(40, 5, Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t3 = thcall!(40, 5, Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t4 = thcall!(20, 5, Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
+        let t5 = thcall!(20, 5, Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
         t1.join().unwrap();
         t2.join().unwrap();
         t3.join().unwrap();

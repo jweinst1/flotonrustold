@@ -66,6 +66,17 @@ macro_rules! thcall {
         }
     };
 
+    ($dur:expr, $times:expr, $($b:tt)+) => {
+        {
+            thread::spawn(move || {
+                for _ in  0..($times) {
+                     $($b)+;
+                     thread::park_timeout(Duration::from_millis($dur));
+                }
+            })
+        }
+    };
+
     ($($b:tt)+) => {
         thread::spawn(||{ 
             $($b)+;

@@ -114,6 +114,15 @@ pub struct Shared<T> {
     cur_ptr:AtomicPtr<TimePtr<T>>
 }
 
+impl<T> Drop for Shared<T> {
+    fn drop(&mut self) {
+        let current = self.cur_ptr.load(Ordering::SeqCst);
+        if nonull!(current) {
+            free!(current);
+        }
+    }
+}
+
 impl<T> NewType for Shared<T> {
     fn new() -> Shared<T> {
         // todo make configurable
