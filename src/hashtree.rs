@@ -35,6 +35,27 @@ pub enum HashTree<T> {
 	Item(Box<[u8]>,  T, AtomicPtr<HashTree<T>>)
 }
 
+impl<T> Drop for HashTree<T> {
+    fn drop(&mut self) {
+    	match self {
+    		HashTree::Item(_, _, ptr) => {
+    			let next_ptr = ptr.load(Ordering::SeqCst);
+    			if nonull!(next_ptr) {
+    				free!(next_ptr);
+    			}
+    		},
+    		HashTree::Table(_, ptr_list) => {
+    			for i in 0..ptr_list.len() {
+    				let next_ptr = ptr_list[i].load(Ordering::SeqCst);
+    				if nonull!(next_ptr) {
+    					free!(next_ptr);
+    				}
+    			}
+    		}
+    	}
+    }
+}
+
 impl<T: Debug + NewType> HashTree<T> {
 	pub fn new_table(hasher:HashScheme, slot_count:usize) -> HashTree<T> {
 		let mut slots = vec![];

@@ -49,7 +49,9 @@ impl<T> Drop for FreeList<T> {
         while let Some(noderef) = unsafe {cur_ptr.as_ref()} {
             let old_ptr = cur_ptr;
             let old_time_ptr = noderef.0.load(Ordering::Relaxed);
-            free!(old_time_ptr);
+            if nonull!(old_time_ptr) {
+                free!(old_time_ptr);
+            }
             cur_ptr = noderef.1.load(Ordering::Relaxed);
             free!(old_ptr);
         }
