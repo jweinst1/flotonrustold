@@ -1,7 +1,6 @@
 use std::sync::atomic::{AtomicPtr, AtomicUsize, AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::{thread, ptr};
 use std::time::{Duration, Instant};
-use std::convert::TryFrom;
 use crate::tlocal;
 use crate::traits::NewType;
 use crate::trie::IntTrie;

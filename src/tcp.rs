@@ -125,8 +125,21 @@ mod tests {
     	unsafe {
     		let mut buf = [0;4];
     		let robj = obj.as_mut().unwrap();
-    		robj.0.read(&mut buf);
-    		robj.0.write(&buf);
+    		loop {
+	    		match robj.0.read(&mut buf) {
+	    			Ok(_) => break,
+	    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
+	    			Err(e) => panic!("Got Error on tcp {:?}", e)
+	    		}
+    		}
+
+    		loop {
+	    		match robj.0.write(&buf) {
+	    			Ok(_) => break,
+	    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
+	    			Err(e) => panic!("Got Error on tcp {:?}", e)
+	    		}
+    		}
     		//robj.shutdown(Shutdown::Both);
     	}
     	free!(obj);
@@ -138,8 +151,20 @@ mod tests {
     	fn readwrite(&mut self) {
     		let bits = [4, 2, 88, 44];
     		let mut resp = [0;4];
-    		self.0.write(&bits);
-    		self.0.read(&mut resp);
+    		loop {
+	    		match self.0.write(&bits) {
+	    			Ok(_) => break,
+	    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
+	    			Err(e) => panic!("Got Error on tcp {:?}", e)
+	    		}
+    		}
+    		loop {
+	    		match self.0.read(&mut resp) {
+	    			Ok(_) => break,
+	    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
+	    			Err(e) => panic!("Got Error on tcp {:?}", e)
+	    		}
+    		}
 	        assert_eq!(resp[0], bits[0]);
 	        assert_eq!(resp[1], bits[1]);
 	        assert_eq!(resp[2], bits[2]);
@@ -162,8 +187,20 @@ mod tests {
         bits[2] = 88;
         bits[3] = 55;
         let mut sock = TcpStream::connect((serv_addr.as_str(), serv_port)).unwrap();
-        sock.write(&bits);
-        sock.read(&mut resp);
+		loop {
+    		match sock.write(&bits) {
+    			Ok(_) => break,
+    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
+    			Err(e) => panic!("Got Error on tcp {:?}", e)
+    		}
+		}
+		loop {
+    		match sock.read(&mut resp) {
+    			Ok(_) => break,
+    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
+    			Err(e) => panic!("Got Error on tcp {:?}", e)
+    		}
+		}
         assert_eq!(resp[0], bits[0]);
         assert_eq!(resp[1], bits[1]);
         assert_eq!(resp[2], bits[2]);

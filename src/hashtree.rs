@@ -210,10 +210,6 @@ mod tests {
     	fn get(&self) -> u32 {
     		self.0.load(Ordering::SeqCst)
     	}
-
-    	fn new(val:u32) -> TestType {
-    		TestType(AtomicU32::new(val))
-    	}
     }
 
     impl NewType for TestType {
