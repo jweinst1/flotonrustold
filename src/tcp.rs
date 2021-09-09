@@ -7,19 +7,49 @@ use crate::threading::{Switch, TVal, ExecUnitGroup, Parker};
 use crate::traits::*;
 use std::io::prelude::*;
 
-pub struct TcpServerStream<T>(TcpStream, T /*Context type*/);
+/**
+ * Used as a Send safe container to ship the context object for
+ * the tcp server across threads. Any operations on the context object
+ * must be atomic and through a const reference.
+ */
+pub struct TcpServerContext<T>(AtomicPtr<T>);
 
-pub struct TcpServer {
+impl<T> TcpServerContext<T> {
+	fn new(ptr:*mut T) -> Self {
+		TcpServerContext(AtomicPtr::new(ptr))
+	}
+
+	fn get(&self) -> *mut T {
+		self.0.load(Ordering::Acquire)
+	}
+}
+
+impl<T> Clone for TcpServerContext<T> {
+    fn clone(&self) -> Self {
+        TcpServerContext(AtomicPtr::new(self.0.load(Ordering::Acquire)))
+    }
+}
+
+pub struct TcpServerStream<T>(TcpStream, TcpServerContext<T> /*Context type*/);
+
+pub struct TcpServer<T> {
 	port:u16,
 	addr:String,
 	core:TcpListener,
 	ready:Switch,
 	shutter:Switch,
-	acceptor:Option<thread::JoinHandle<()>>
+	acceptor:Option<thread::JoinHandle<()>>,
+	context:TcpServerContext<T>
 }
 
-impl TcpServer {
-	pub fn new<T:'static + NewType>(init_th_count:usize, th_qsize:usize, addr:&String, port:u16, mut parker:Parker, func:fn(*mut TcpServerStream<T>)) -> TcpServer {
+impl<T: 'static> TcpServer<T> {
+	pub fn new(init_th_count:usize, 
+		                            th_qsize:usize, 
+		                            addr:&String, 
+		                            port:u16, 
+		                            mut parker:Parker, 
+		                            func:fn(*mut TcpServerStream<T>),
+		                            context:TcpServerContext<T>) -> TcpServer<T> {
 		let ready = Switch::new();
 		let rswitch = ready.clone();
 		let shut = Switch::new();
@@ -28,6 +58,7 @@ impl TcpServer {
 		let listener = TcpListener::bind((addr.as_str(), port)).unwrap();
 		let tlistener = listener.try_clone().unwrap();
 		tlistener.set_nonblocking(true).expect("Cannot set non-blocking");
+		let tcontext = context.clone();
 		let handle = thread::spawn(move || {
 			while !rswitch.get() {
 				thread::park_timeout(Duration::from_millis(500));
@@ -41,7 +72,7 @@ impl TcpServer {
 				match tlistener.accept() {
 					Ok((_socket, addr)) => {
 						println!("Got request from {:?}", addr);
-						let req = alloc!(TcpServerStream(_socket, T::new()));
+						let req = alloc!(TcpServerStream(_socket, tcontext.clone()));
 						match egroup.assign_retried(req, 10, Duration::from_millis(100)) {
 							None => {
 								// can't handle it
@@ -66,7 +97,8 @@ impl TcpServer {
 			core:listener,
 			ready:ready,
 			shutter:shut,
-			acceptor:Some(handle)
+			acceptor:Some(handle),
+			context:context.clone()
 		}
 	}
 
@@ -88,10 +120,6 @@ mod tests {
     use super::*;
 
     struct Context(u8);
-
-    impl NewType for Context {
-    	fn new() -> Self { Context(5) }
-    }
 
     fn do_echo(obj:*mut TcpServerStream<Context>) {
     	unsafe {
@@ -124,7 +152,8 @@ mod tests {
         let serv_addr = String::from("127.0.0.1");
         let serv_port = 8080;
         let pker = Parker::new(5, 200, 15);
-        let mut server = TcpServer::new(3, 5, &serv_addr, serv_port, pker, do_echo);
+        let cxt = alloc!(Context(8));
+        let mut server = TcpServer::<Context>::new(3, 5, &serv_addr, serv_port, pker, do_echo, TcpServerContext::new(cxt));
         server.start();
         let mut bits = [0;4];
         let mut resp = [0;4];
@@ -140,6 +169,7 @@ mod tests {
         assert_eq!(resp[2], bits[2]);
         assert_eq!(resp[3], bits[3]);
         server.stop();
+        free!(cxt);
     }
 
     #[test]
@@ -147,7 +177,8 @@ mod tests {
         let serv_addr = String::from("127.0.0.1");
         let serv_port = 8087;
         let pker = Parker::new(5, 200, 15);
-        let mut server = TcpServer::new(3, 5, &serv_addr, serv_port, pker, do_echo);
+        let cxt = alloc!(Context(8));
+        let mut server = TcpServer::<Context>::new(3, 5, &serv_addr, serv_port, pker, do_echo, TcpServerContext::new(cxt));
         server.start();
         let t1 = thcall!(80, 5, Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
         let t2 = thcall!(40, 5, Stream(TcpStream::connect(("127.0.0.1", 8087)).unwrap()).readwrite());
@@ -160,5 +191,6 @@ mod tests {
         t4.join().unwrap();
         t5.join().unwrap();
         server.stop();
+        free!(cxt);
     }
 }
