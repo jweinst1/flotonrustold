@@ -13,14 +13,15 @@ use std::io::prelude::*;
  * the tcp server across threads. Any operations on the context object
  * must be atomic and through a const reference.
  */
+#[derive(Debug)]
 pub struct TcpServerContext<T>(AtomicPtr<T>);
 
 impl<T> TcpServerContext<T> {
-	fn new(ptr:*mut T) -> Self {
+	pub fn new(ptr:*mut T) -> Self {
 		TcpServerContext(AtomicPtr::new(ptr))
 	}
 
-	fn get(&self) -> *mut T {
+	pub fn get(&self) -> *mut T {
 		self.0.load(Ordering::Acquire)
 	}
 }
@@ -31,8 +32,10 @@ impl<T> Clone for TcpServerContext<T> {
     }
 }
 
+#[derive(Debug)]
 pub struct TcpServerStream<T>(TcpStream, TcpServerContext<T> /*Context type*/);
 
+#[derive(Debug)]
 pub struct TcpServer<T> {
 	port:u16,
 	addr:String,

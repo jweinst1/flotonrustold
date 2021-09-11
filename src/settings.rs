@@ -3,16 +3,16 @@ use crate::ports::next_port;
 
 
 #[derive(Debug, Clone)]
-struct Settings {
-	db_map_slots:usize,
-	db_port:u16,
-	conn_th_count:usize,
-	conn_queue_size:usize,
-	serv_addr:String,
-	tcp_park_min:u64,
-	tcp_park_max:u64,
-	tcp_park_seg:u64,
-	th_free_lim:u32
+pub struct Settings {
+	pub db_map_slots:usize,
+	pub db_port:u16,
+	pub conn_th_count:usize,
+	pub conn_queue_size:usize,
+	pub serv_addr:String,
+	pub tcp_park_min:u64,
+	pub tcp_park_max:u64,
+	pub tcp_park_seg:u64,
+	pub th_free_lim:u32
 }
 
 impl NewType for Settings {
@@ -33,7 +33,7 @@ impl NewType for Settings {
 impl Settings {
 	// Tests use unique ports, not specific ones, thus we have to follow
 	// that here too
-	fn set_port_for_testing(&mut self) {
+	pub fn set_port_for_testing(&mut self) {
 		self.db_port = next_port();
 	}
 }
