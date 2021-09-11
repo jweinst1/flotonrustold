@@ -251,7 +251,7 @@ impl<T: 'static> ExecUnitGroup<T> {
 
 // Intended to do gradual backoff for non blocking operations
 // should never be used when holding a shared resource
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parker {
     min_time:u64,
     max_time:u64,

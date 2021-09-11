@@ -45,12 +45,12 @@ pub struct TcpServer<T> {
 
 impl<T: 'static> TcpServer<T> {
 	pub fn new(init_th_count:usize, 
-		                            th_qsize:usize, 
-		                            addr:&String, 
-		                            port:u16, 
-		                            mut parker:Parker, 
-		                            func:fn(*mut TcpServerStream<T>),
-		                            context:TcpServerContext<T>) -> TcpServer<T> {
+		       th_qsize:usize, 
+		       addr:&String, 
+		       port:u16, 
+		       parker:&Parker, 
+		       func:fn(*mut TcpServerStream<T>),
+		       context:TcpServerContext<T>) -> TcpServer<T> {
 		let ready = Switch::new();
 		let rswitch = ready.clone();
 		let shut = Switch::new();
@@ -60,6 +60,7 @@ impl<T: 'static> TcpServer<T> {
 		let tlistener = listener.try_clone().unwrap();
 		tlistener.set_nonblocking(true).expect("Cannot set non-blocking");
 		let tcontext = context.clone();
+		let mut tparker = parker.clone();
 		let handle = thread::spawn(move || {
 			while !rswitch.get() {
 				thread::park_timeout(Duration::from_millis(500));
@@ -78,15 +79,15 @@ impl<T: 'static> TcpServer<T> {
 							None => {
 								// can't handle it
 								free!(req);
-								parker.do_park(false);
+								tparker.do_park(false);
 							},
 							Some(_) => {
-								parker.do_park(true);
+								tparker.do_park(true);
 							}
 						}
 					},
 					Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => {
-						parker.do_park(false);
+						tparker.do_park(false);
 					},
 					Err(e) => println!("Got error from socket {:?}", e)
 				}
@@ -179,7 +180,7 @@ mod tests {
         let serv_port = next_port();
         let pker = Parker::new(5, 200, 15);
         let cxt = alloc!(Context(8));
-        let mut server = TcpServer::<Context>::new(3, 5, &serv_addr, serv_port, pker, do_echo, TcpServerContext::new(cxt));
+        let mut server = TcpServer::<Context>::new(3, 5, &serv_addr, serv_port, &pker, do_echo, TcpServerContext::new(cxt));
         server.start();
         let mut bits = [0;4];
         let mut resp = [0;4];
@@ -216,7 +217,7 @@ mod tests {
         let serv_port = next_port();
         let pker = Parker::new(5, 200, 15);
         let cxt = alloc!(Context(8));
-        let mut server = TcpServer::<Context>::new(3, 5, &serv_addr, serv_port, pker, do_echo, TcpServerContext::new(cxt));
+        let mut server = TcpServer::<Context>::new(3, 5, &serv_addr, serv_port, &pker, do_echo, TcpServerContext::new(cxt));
         server.start();
         let t1 = thcall!(80, 5, Stream(TcpStream::connect(("127.0.0.1", serv_port)).unwrap()).readwrite());
         let t2 = thcall!(40, 5, Stream(TcpStream::connect(("127.0.0.1", serv_port)).unwrap()).readwrite());
