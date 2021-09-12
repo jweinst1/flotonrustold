@@ -9,7 +9,7 @@ use crate::settings::Settings;
 use crate::traits::*;
 
 #[derive(Debug)]
-struct Database {
+pub struct Database {
 	settings:Settings,
 	data:Container<Value>,
 	server:AtomicPtr<TcpServer<Database>>
@@ -18,7 +18,9 @@ struct Database {
 
 impl Database {
 	fn tcp_handler(obj_ptr:*mut TcpServerStream<Database>) {
-
+		let stream = unsafe { obj_ptr.as_ref().unwrap() };
+		let context = stream.get_ctx();
+		println!("port {}", context.settings.db_port);
 	}
 
 	fn new_for_testing() -> Database {

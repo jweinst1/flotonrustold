@@ -33,7 +33,13 @@ impl<T> Clone for TcpServerContext<T> {
 }
 
 #[derive(Debug)]
-pub struct TcpServerStream<T>(TcpStream, TcpServerContext<T> /*Context type*/);
+pub struct TcpServerStream<T>(pub TcpStream, TcpServerContext<T> /*Context type*/);
+
+impl<T> TcpServerStream<T> {
+	pub fn get_ctx(&self) -> &T {
+		unsafe { self.1.get().as_ref().unwrap() }
+	}
+}
 
 #[derive(Debug)]
 pub struct TcpServer<T> {
@@ -131,21 +137,22 @@ mod tests {
     		let mut buf = [0;4];
     		let robj = obj.as_mut().unwrap();
     		loop {
-	    		match robj.0.read(&mut buf) {
+	    		match robj.0.read_exact(&mut buf) {
 	    			Ok(_) => break,
-	    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
+	    			Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => thread::park_timeout(Duration::from_millis(5)),
 	    			Err(e) => panic!("Got Error on tcp {:?}", e)
 	    		}
     		}
 
     		loop {
-	    		match robj.0.write(&buf) {
+	    		match robj.0.write_all(&buf) {
 	    			Ok(_) => break,
-	    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
+	    			Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => thread::park_timeout(Duration::from_millis(5)),
 	    			Err(e) => panic!("Got Error on tcp {:?}", e)
 	    		}
     		}
-    		//robj.shutdown(Shutdown::Both);
+    		robj.0.flush().expect("Could not flush");
+    		robj.0.shutdown(Shutdown::Both).expect("shutdown call failed");
     	}
     	free!(obj);
     }
@@ -156,20 +163,11 @@ mod tests {
     	fn readwrite(&mut self) {
     		let bits = [4, 2, 88, 44];
     		let mut resp = [0;4];
-    		loop {
-	    		match self.0.write(&bits) {
-	    			Ok(_) => break,
-	    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
-	    			Err(e) => panic!("Got Error on tcp {:?}", e)
-	    		}
-    		}
-    		loop {
-	    		match self.0.read(&mut resp) {
-	    			Ok(_) => break,
-	    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
-	    			Err(e) => panic!("Got Error on tcp {:?}", e)
-	    		}
-    		}
+
+    		self.0.write_all(&bits).expect("Failed to write bits");
+    		self.0.flush().expect("Could not flush");
+    		self.0.read(&mut resp).expect("Failed to read response");
+
 	        assert_eq!(resp[0], bits[0]);
 	        assert_eq!(resp[1], bits[1]);
 	        assert_eq!(resp[2], bits[2]);
@@ -178,7 +176,7 @@ mod tests {
     }
 
     #[test]
-    fn echo_works() {
+    fn st_echo_works() {
         let serv_addr = String::from("127.0.0.1");
         let serv_port = next_port();
         let pker = Parker::new(5, 200, 15);
@@ -192,20 +190,9 @@ mod tests {
         bits[2] = 88;
         bits[3] = 55;
         let mut sock = TcpStream::connect((serv_addr.as_str(), serv_port)).unwrap();
-		loop {
-    		match sock.write(&bits) {
-    			Ok(_) => break,
-    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
-    			Err(e) => panic!("Got Error on tcp {:?}", e)
-    		}
-		}
-		loop {
-    		match sock.read(&mut resp) {
-    			Ok(_) => break,
-    			Err(ref e) if e.kind() == io::ErrorKind::Interrupted => println!("Tcp Interrupted, retrying"),
-    			Err(e) => panic!("Got Error on tcp {:?}", e)
-    		}
-		}
+        sock.write_all(&bits).expect("Could not do the write");
+        sock.read_exact(&mut resp).expect("Could not do the read");
+
         assert_eq!(resp[0], bits[0]);
         assert_eq!(resp[1], bits[1]);
         assert_eq!(resp[2], bits[2]);
