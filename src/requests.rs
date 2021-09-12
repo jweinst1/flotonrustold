@@ -17,7 +17,7 @@ impl RequestHeader {
 }
 
 #[derive(Debug)]
-struct Request {
+pub struct Request {
 	header:RequestHeader,
 	body:Vec<u8>
 }
@@ -29,7 +29,7 @@ impl NewType for Request {
 }
 
 impl Request {
-	fn parse(stream:&mut TcpStream) -> Option<Request> {
+	pub fn parse(stream:&mut TcpStream) -> Option<Request> {
 		let mut req = Request::new();
 		let mut head_buf:[u8;8] = [0;8];
 		match stream.read_exact(&mut head_buf) {

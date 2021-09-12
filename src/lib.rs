@@ -14,5 +14,6 @@ pub mod threading;
 pub mod ports;
 pub mod tcp;
 pub mod requests;
+pub mod responses;
 pub mod settings;
 pub mod database;

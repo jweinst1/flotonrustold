@@ -6,6 +6,7 @@ use crate::processors;
 use crate::tcp::{TcpServer, TcpServerStream, TcpServerContext};
 use crate::threading::Parker;
 use crate::settings::Settings;
+use crate::requests::Request;
 use crate::traits::*;
 
 #[derive(Debug)]
@@ -18,9 +19,9 @@ pub struct Database {
 
 impl Database {
 	fn tcp_handler(obj_ptr:*mut TcpServerStream<Database>) {
-		let stream = unsafe { obj_ptr.as_ref().unwrap() };
+		let stream = unsafe { obj_ptr.as_mut().unwrap() };
 		let context = stream.get_ctx();
-		println!("port {}", context.settings.db_port);
+		let req = Request::parse(&mut stream.0);
 	}
 
 	fn new_for_testing() -> Database {
