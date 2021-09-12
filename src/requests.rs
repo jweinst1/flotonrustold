@@ -1,5 +1,4 @@
 use std::net::{TcpStream, Shutdown};
-use std::mem;
 use std::io::prelude::*;
 use std::convert::TryInto;
 use crate::traits::*;
@@ -58,7 +57,7 @@ mod tests {
 		let addrs = [
 		    next_local_addr()
 		];
-		let mut listener = TcpListener::bind(&addrs[..]).unwrap();
+		let listener = TcpListener::bind(&addrs[..]).unwrap();
 		let mut client = TcpStream::connect(&addrs[..]).unwrap();
 		let sizer:u32 = 4;
 		let flags:u32 = 1;

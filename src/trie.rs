@@ -229,6 +229,16 @@ impl<T: NewType> IntTrie<T> {
 				base.create_seq(4);
 				base.create_seq(5);
 				base.create_seq(6);	
+			},
+			8 => {
+				base.create_seq(0);
+				base.create_seq(1);
+				base.create_seq(2);
+				base.create_seq(3);
+				base.create_seq(4);
+				base.create_seq(5);
+				base.create_seq(6);
+				base.create_seq(7);	
 			}
 			_ => {
 				for i in 0..size {
