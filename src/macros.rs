@@ -77,6 +77,13 @@ macro_rules! thcall {
         }
     };
 
+    // This just moves a whole block as thread spawn
+    ($code:block) => {
+        {
+            thread::spawn(move || $code)
+        }
+    };
+
     ($($b:tt)+) => {
         thread::spawn(||{ 
             $($b)+;
