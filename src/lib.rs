@@ -2,6 +2,7 @@
 pub mod constants;
 pub mod traits;
 #[macro_use] pub mod macros;
+pub mod datetime;
 pub mod circular;
 pub mod trie;
 pub mod tlocal;
