@@ -1,8 +1,10 @@
 use std::net::{TcpStream, Shutdown};
+use std::sync::atomic::Ordering;
 use std::io::prelude::*;
 use std::convert::TryInto;
 use crate::traits::*;
 use crate::ports::next_local_addr;
+use crate::logging::*;
 
 #[derive(Debug, Clone)]
 struct RequestHeader {
@@ -33,14 +35,20 @@ impl Request {
 		let mut req = Request::new();
 		let mut head_buf:[u8;8] = [0;8];
 		match stream.read_exact(&mut head_buf) {
-			Err(_) => return None,
+			Err(e) => {
+				log_error!(Connections, "Failed to read request header with err: {}", e);
+				return None;
+			},
 			_ => (),
 		}
 		req.header.total_size = u32::from_le_bytes(head_buf[0..4].try_into().unwrap());
 		req.header.flags = u32::from_le_bytes(head_buf[4..8].try_into().unwrap());
 		req.body.resize(req.header.total_size as usize, 0);
 		match stream.read(req.body.as_mut_slice()) {
-			Err(_) => return None,
+			Err(e) => {
+				log_error!(Connections, "Failed to read request body with err: {}", e);
+				return None;
+			},
 			_ => ()
 		}
 		Some(req)

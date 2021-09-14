@@ -4,6 +4,8 @@ use std::time::Instant;
 use std::mem::MaybeUninit;
 use std::convert::TryFrom;
 use std::cell::RefCell;
+use std::process::abort;
+use crate::logging::*;
 
 static THREAD_CNTR:AtomicUsize = AtomicUsize::new(0);
 
@@ -40,7 +42,10 @@ pub fn time() -> u64 {
 	TH_EPOCH.with(|x| {
 		match u64::try_from(x.elapsed().as_nanos()) {
 				Ok(v) => v,
-				Err(e) => panic!("Could not convert monotonic tick to u64, err: {:?}", e)
+				Err(e) => { 
+                    log_fatal!(tlocal_monotonic, "Could not convert monotonic tick to u64, err: {}", e);
+                    abort();
+                }
 			}
 	})
 }

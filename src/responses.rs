@@ -1,8 +1,10 @@
 use std::net::{TcpStream, Shutdown};
+use std::sync::atomic::Ordering;
 use std::io::prelude::*;
 use std::io;
 use std::thread;
 use crate::ports;
+use crate::logging::*;
 
 #[derive(Debug)]
 struct ResponseHeader {
@@ -30,7 +32,7 @@ impl Response {
 			match stream.write_all(&self.header.total_size.to_le_bytes()) {
 	    		Ok(_) => break,
 	    		Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => thread::yield_now(),
-	    		Err(e) => { println!("Got Error on tcp write {:?}", e); return false; }
+	    		Err(e) => { log_error!(Connections, "Got Error for writing response header: {}", e); return false; }
 			}
 		}
 

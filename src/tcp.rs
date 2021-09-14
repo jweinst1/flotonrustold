@@ -6,6 +6,7 @@ use std::io;
 use crate::threading::{Switch, TVal, ExecUnitGroup, Parker};
 use crate::traits::*;
 use crate::ports::next_port;
+use crate::logging::*;
 use std::io::prelude::*;
 
 /**
@@ -66,8 +67,12 @@ impl<T: 'static> TcpServer<T> {
 		let tshut = shut.clone();
 		let mut egroup = ExecUnitGroup::new(init_th_count, th_qsize, func);
 		let listener = TcpListener::bind((addr.as_str(), port)).unwrap();
+		log_info!(Tcp, "Will listen for connections on port {} at address: {}", port, addr);
 		let tlistener = listener.try_clone().unwrap();
-		tlistener.set_nonblocking(true).expect("Cannot set non-blocking");
+		match tlistener.set_nonblocking(true) {
+			Err(e) => log_fatal!(Tcp, "Could not set non-blocking mode for tcp server, got {}", e),
+			_ => ()
+		}
 		let tcontext = context.clone();
 		let mut tparker = parker.clone();
 		let handle = thread::spawn(move || {
@@ -82,7 +87,7 @@ impl<T: 'static> TcpServer<T> {
 				}
 				match tlistener.accept() {
 					Ok((_socket, addr)) => {
-						println!("Got request from {:?}", addr);
+						//println!("Got request from {:?}", addr);
 						let req = alloc!(TcpServerStream(_socket, tcontext.clone()));
 						match egroup.assign_retried(req, 10, Duration::from_millis(100)) {
 							None => {
@@ -177,6 +182,7 @@ mod tests {
 
     #[test]
     fn st_echo_works() {
+    	logging_test_set(LOG_LEVEL_INFO);
         let serv_addr = String::from("127.0.0.1");
         let serv_port = next_port();
         let pker = Parker::new(5, 200, 15);
@@ -203,6 +209,7 @@ mod tests {
 
     #[test]
     fn mt_echo_works() {
+    	logging_test_set(LOG_LEVEL_INFO);
         let serv_addr = String::from("127.0.0.1");
         let serv_port = next_port();
         let pker = Parker::new(5, 200, 15);
