@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, AtomicBool, Ordering};
+use std::sync::atomic::{AtomicUsize, AtomicBool, AtomicPtr, Ordering};
 use std::thread;
 use std::time::Instant;
 use std::mem::MaybeUninit;
@@ -6,6 +6,7 @@ use std::convert::TryFrom;
 use std::cell::RefCell;
 use std::process::abort;
 use crate::logging::*;
+use crate::traits::*;
 
 static THREAD_CNTR:AtomicUsize = AtomicUsize::new(0);
 
