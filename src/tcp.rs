@@ -21,7 +21,7 @@ impl<T> TcpServerContext<T> {
 	pub fn new(ptr:*mut T) -> Self {
 		TcpServerContext(AtomicPtr::new(ptr))
 	}
-
+	#[inline]
 	pub fn get(&self) -> *mut T {
 		self.0.load(Ordering::Acquire)
 	}
@@ -37,8 +37,14 @@ impl<T> Clone for TcpServerContext<T> {
 pub struct TcpServerStream<T>(pub TcpStream, TcpServerContext<T> /*Context type*/);
 
 impl<T> TcpServerStream<T> {
+	#[inline]
 	pub fn get_ctx(&self) -> &T {
 		unsafe { self.1.get().as_ref().unwrap() }
+	}
+
+	#[inline]
+	pub fn get_ptr(&self) -> *mut T {
+		self.1.get()
 	}
 }
 

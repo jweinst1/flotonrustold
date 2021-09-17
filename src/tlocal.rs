@@ -1,10 +1,12 @@
 use std::sync::atomic::{AtomicUsize, AtomicBool, AtomicPtr, Ordering};
 use std::thread;
 use std::time::Instant;
+use std::ptr;
 use std::mem::MaybeUninit;
 use std::convert::TryFrom;
 use std::cell::RefCell;
 use std::process::abort;
+use crate::database::Database;
 use crate::logging::*;
 use crate::traits::*;
 
@@ -59,6 +61,16 @@ pub fn free_lim() -> u32 {
 
 pub fn set_free_lim(val:u32) {
     FREE_LIST_L.with(|x| { *x.borrow_mut() = val; })
+}
+
+thread_local!(static ACTIVE_DB:RefCell<*mut Database> = RefCell::new(ptr::null_mut()));
+
+pub fn set_db(ptr:*mut Database) {
+    ACTIVE_DB.with(|x| { *x.borrow_mut() = ptr; })
+}
+
+pub fn get_db() -> *mut Database {
+    ACTIVE_DB.with(|x| { *x.borrow() })
 }
 
 #[cfg(test)]

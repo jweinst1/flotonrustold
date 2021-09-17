@@ -8,6 +8,7 @@ use crate::threading::Parker;
 use crate::settings::Settings;
 use crate::requests::Request;
 use crate::responses::Response;
+use crate::tlocal;
 use crate::traits::*;
 
 #[derive(Debug)]
@@ -17,22 +18,18 @@ pub struct Database {
 	server:AtomicPtr<TcpServer<Database>>
 }
 
-impl DBContext for Database {
-	fn get_free_lst_lim(&self) -> u32 {
-		self.settings.th_free_lim
-	}
-}
-
 
 impl Database {
 	fn tcp_handler(obj_ptr:*mut TcpServerStream<Database>) {
-		let stream = unsafe { obj_ptr.as_mut().unwrap() };
-		let context = stream.get_ctx();
+		let cstream = unsafe { obj_ptr.as_ref().unwrap() };
+		tlocal::set_db(cstream.get_ptr());
+		let context = cstream.get_ctx();
+		let tstream = unsafe { obj_ptr.as_mut().unwrap() };
 		let mut output:Vec<u8> = vec![];
-		let req = Request::parse(&mut stream.0).unwrap();
+		let req = Request::parse(&mut tstream.0).unwrap();
 		processors::run_cmd(&req.body, &context.data, &mut output);
 		let resp = Response::from_vec(output, 0);
-		resp.to_tcp_stream(&mut stream.0);
+		resp.to_tcp_stream(&mut tstream.0);
 	}
 
 	fn new_for_testing() -> Database {
