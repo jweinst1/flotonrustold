@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::atomic::{AtomicPtr, AtomicU8, Ordering};
 use std::ptr;
 use crate::containers::Container;
 use crate::values::Value;
@@ -8,14 +8,36 @@ use crate::threading::Parker;
 use crate::settings::Settings;
 use crate::requests::Request;
 use crate::responses::Response;
+use crate::constants::*;
 use crate::tlocal;
 use crate::traits::*;
+use crate::logging::*;
+
+#[derive(Debug)]
+struct DatabaseState(AtomicU8);
+
+impl NewType for DatabaseState {
+	fn new() -> Self {
+		DatabaseState(AtomicU8::new(DBSTATE_START))
+	}
+}
+
+impl DatabaseState {
+	fn to_ok(&self) {
+		if self.0.load(Ordering::Acquire) == DBSTATE_START {
+			self.0.store(DBSTATE_OK, Ordering::Release);
+		} else {
+			log_fatal!(Database, "Database was not in starting state, was in state {:?}, thus cannot become ready", self);
+		}
+	}
+}
 
 #[derive(Debug)]
 pub struct Database {
 	settings:Settings,
 	data:Container<Value>,
-	server:AtomicPtr<TcpServer<Database>>
+	server:AtomicPtr<TcpServer<Database>>,
+	state:DatabaseState
 }
 
 
@@ -38,7 +60,8 @@ impl Database {
 		let slots_size = opts.db_map_slots;
 		Database{settings:opts, 
 			     data:Container::new_map(slots_size),
-			     server:newptr!()}
+			     server:newptr!(),
+			     state:DatabaseState::new()}
 	}
 
 	fn construct(&mut self) {
@@ -68,5 +91,16 @@ impl Database {
 			panic!("Server was attempted to be started while not being constructed!");
 		}
 		unsafe { self.server.load(Ordering::SeqCst).as_ref().unwrap().start(); }
+		self.state.to_ok();
 	}
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn db_works() {
+
+    }
 }
