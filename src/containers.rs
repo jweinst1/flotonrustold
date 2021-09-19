@@ -4,6 +4,11 @@ use crate::tlocal;
 use crate::hashtree::{HashTree, HashScheme};
 
 #[derive(Debug)]
+pub enum ContainerErr {
+    KeyNotFound
+}
+
+#[derive(Debug)]
 pub enum Container<T> {
 	Val(T),
 	Map(HashTree<Shared<Container<T>>>)
