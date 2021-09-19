@@ -11,4 +11,4 @@ pub const VBIN_ABOOL:u8 = 2;
 
 pub const DBSTATE_START:u8 = 0;
 pub const DBSTATE_OK:u8 = 1;
-pub const DBSTATE_SHUT_DOWN:u8 = 2;
+pub const DBSTATE_SHUTTING_DOWN:u8 = 2;

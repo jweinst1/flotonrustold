@@ -92,7 +92,7 @@ impl<T: 'static> TcpServer<T> {
 					break;
 				}
 				match tlistener.accept() {
-					Ok((_socket, addr)) => {
+					Ok((_socket, _)) => {
 						//println!("Got request from {:?}", addr);
 						let req = alloc!(TcpServerStream(_socket, tcontext.clone()));
 						match egroup.assign_retried(req, 10, Duration::from_millis(100)) {

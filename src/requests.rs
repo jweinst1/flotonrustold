@@ -12,12 +12,6 @@ struct RequestHeader {
 	flags:u32
 }
 
-impl RequestHeader {
-	fn is_shutdown_req(&self) -> bool {
-		(self.flags & 1) == 1
-	}
-}
-
 #[derive(Debug)]
 pub struct Request {
 	header:RequestHeader,
@@ -77,7 +71,7 @@ mod tests {
 		let (mut received, _addr) = listener.accept().unwrap();
 		println!("Got req from {:?}", _addr);
 		let req = Request::parse(&mut received).unwrap();
-		assert!(req.header.is_shutdown_req());
+		assert_eq!(req.header.flags, 1);
 		assert_eq!(req.header.total_size, 4);
 		assert_eq!(req.body.len(), 4);
 		assert_eq!(req.body[0], bytes[0]);

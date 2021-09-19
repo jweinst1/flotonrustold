@@ -23,11 +23,23 @@ impl NewType for DatabaseState {
 }
 
 impl DatabaseState {
-	fn to_ok(&self) {
+	fn to_ok(&self) -> bool {
 		if self.0.load(Ordering::Acquire) == DBSTATE_START {
 			self.0.store(DBSTATE_OK, Ordering::Release);
+			true
 		} else {
-			log_fatal!(Database, "Database was not in starting state, was in state {:?}, thus cannot become ready", self);
+			log_fatal!(Database, "Database was not in starting state, it was in state {:?}, thus cannot become ready", self);
+			false
+		}
+	}
+
+	fn to_shutdown(&self) -> bool {
+		if self.0.load(Ordering::Acquire) == DBSTATE_OK {
+			self.0.store(DBSTATE_SHUTTING_DOWN, Ordering::Release);
+			true
+		} else {
+			log_fatal!(Database, "Database was not in ok state, it was in state {:?}, thus cannot shut down", self);
+			false
 		}
 	}
 }
@@ -88,10 +100,19 @@ impl Database {
 
 	fn start(&self) {
 		if !self.is_constructed() {
-			panic!("Server was attempted to be started while not being constructed!");
+			log_fatal!(Database, "Server was attempted to be started while not being constructed!");
+			panic!("Cannot start Database");
 		}
 		unsafe { self.server.load(Ordering::SeqCst).as_ref().unwrap().start(); }
 		self.state.to_ok();
+	}
+
+	fn stop(&mut self) {
+		if self.state.to_shutdown() {
+			let serv_ptr = self.server.load(Ordering::Acquire);
+			unsafe { serv_ptr.as_mut().unwrap().stop(); }
+			free!(serv_ptr);
+		}
 	}
 }
 
@@ -100,7 +121,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn db_works() {
-
+    fn db_state_works() {
+    	let state = DatabaseState::new();
+    	assert!(state.to_ok());
+    	assert!(state.to_shutdown());
     }
 }
