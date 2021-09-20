@@ -2,6 +2,8 @@ use std::fmt::Debug;
 use crate::shared::*;
 use crate::tlocal;
 use crate::hashtree::{HashTree, HashScheme};
+use crate::logging::*;
+use crate::traits::*;
 
 #[derive(Debug)]
 pub enum ContainerErr {
@@ -12,6 +14,57 @@ pub enum ContainerErr {
 pub enum Container<T> {
 	Val(T),
 	Map(HashTree<Shared<Container<T>>>)
+}
+
+fn hash_tree_cont_output_binary<T: InPutOutPut>(tree:&HashTree<Shared<Container<T>>>, 
+                                                output: &mut Vec<u8>) {
+    match tree {
+        HashTree::Table(_, tble) => for i in 0..tble.len() {
+            let tptr = tble[i].load(Ordering::SeqCst);
+            if nonull!(tptr) {
+                unsafe {
+                    match tptr.as_ref().unwrap() {
+                        HashTree::Item(ikey, ival, iother) => {
+                            let current_val = ival.read();
+                            if nonull!(current_val) {
+                                // 1 byte for size, for now
+                                output.push(ikey.len() as u8);
+                                for j in 0..ikey.len() {
+                                    output.push(ikey[j]);
+                                }
+                                current_val.as_ref().unwrap().0.output_binary(output);
+                            }
+                            // also add collided key-value pairs
+                            let other_ptr = iother.load(Ordering::SeqCst);
+                            if nonull!(other_ptr) {
+                                hash_tree_cont_output_binary(other_ptr.as_ref().unwrap(), output);
+                            }
+                        },
+                        HashTree::Table(gen, _) => {
+                            log_fatal!(Output, "Unexpected table in place of item during format, gen: {:?}", gen);
+                            panic!("Cannot format container with invalid item");
+                        }
+                    }
+                }
+            }
+        },
+        HashTree::Item(key, _, _) => {
+            log_fatal!(Output, "Unexpected item in place of table during format, key: {:?}", key);
+            panic!("Cannot format container with invalid map");
+        }
+    }
+} 
+
+impl<T: InPutOutPut> InPutOutPut for Container<T> {
+    fn output_binary(&self, output: &mut Vec<u8>) {
+        match self {
+            Container::Val(v) => v.output_binary(output),
+            Container::Map(m) => hash_tree_cont_output_binary(m, output)
+        }
+    }
+    fn input_binary(input:&[u8], place:&mut usize) -> Self {
+        Container::new_map(30)
+    }
 }
 
 impl<T: Debug> Container<T> {
