@@ -1,9 +1,12 @@
 use std::fmt::Debug;
+use std::sync::atomic::Ordering;
+use std::ptr;
 use crate::shared::*;
 use crate::tlocal;
 use crate::hashtree::{HashTree, HashScheme};
 use crate::logging::*;
 use crate::traits::*;
+use crate::constants::{VBIN_CMAP_BEGIN, VBIN_CMAP_END, CMAPB_KEY};
 
 #[derive(Debug)]
 pub enum ContainerErr {
@@ -16,7 +19,7 @@ pub enum Container<T> {
 	Map(HashTree<Shared<Container<T>>>)
 }
 
-fn hash_tree_cont_output_binary<T: InPutOutPut>(tree:&HashTree<Shared<Container<T>>>, 
+fn hash_tree_cont_output_binary<T: InPutOutPut + Debug>(tree:&HashTree<Shared<Container<T>>>, 
                                                 output: &mut Vec<u8>) {
     match tree {
         HashTree::Table(_, tble) => for i in 0..tble.len() {
@@ -27,6 +30,8 @@ fn hash_tree_cont_output_binary<T: InPutOutPut>(tree:&HashTree<Shared<Container<
                         HashTree::Item(ikey, ival, iother) => {
                             let current_val = ival.read();
                             if nonull!(current_val) {
+                                // annotates a key
+                                output.push(CMAPB_KEY);
                                 // 1 byte for size, for now
                                 output.push(ikey.len() as u8);
                                 for j in 0..ikey.len() {
@@ -55,15 +60,40 @@ fn hash_tree_cont_output_binary<T: InPutOutPut>(tree:&HashTree<Shared<Container<
     }
 } 
 
-impl<T: InPutOutPut> InPutOutPut for Container<T> {
+impl<T: InPutOutPut + Debug> InPutOutPut for Container<T> {
     fn output_binary(&self, output: &mut Vec<u8>) {
         match self {
             Container::Val(v) => v.output_binary(output),
-            Container::Map(m) => hash_tree_cont_output_binary(m, output)
+            Container::Map(m) => {
+                output.push(VBIN_CMAP_BEGIN);
+                hash_tree_cont_output_binary(m, output);
+                output.push(VBIN_CMAP_END);
+            }
         }
     }
+
     fn input_binary(input:&[u8], place:&mut usize) -> Self {
-        Container::new_map(30)
+        if input[*place] == VBIN_CMAP_BEGIN {
+            *place += 1;
+            let nmap = Container::new_map(40); // todo make configurable
+            while input[*place] != VBIN_CMAP_END {
+                if input[*place] == CMAPB_KEY {
+                    *place += 1;
+                    let ksize = input[*place] as usize;
+                    *place += 1;
+                    let kslice = &input[*place..(*place + ksize)];
+                    *place += ksize;
+                    let val = Container::input_binary(input, place);
+                    nmap.set_map(kslice, val);
+                } else {
+                    log_error!(Input, "Invalid byte for input: {}", input[*place]);
+                    return nmap;
+                }
+            }
+            return nmap;
+        } else {
+            return Container::Val(T::input_binary(input, place));
+        }
     }
 }
 
