@@ -236,4 +236,48 @@ mod tests {
             None => panic!("Expected to find key {:?} nested in key {:?}", key2, key)
         }
     }
+
+    #[derive(Debug)]
+    enum TestData {
+        A,
+        B
+    }
+
+    impl InPutOutPut for TestData {
+        fn output_binary(&self, output: &mut Vec<u8>) {
+            match self {
+                TestData::A => output.push(10),
+                TestData::B => output.push(20)
+            }
+        }
+        fn input_binary(input:&[u8], place:&mut usize) -> Self {
+            let byte = input[*place];
+            *place += 1;
+            match byte {
+                10 => TestData::A,
+                20 => TestData::B,
+                _ => panic!("Unexpected u8 : {:?}", byte)
+            }
+        }
+    }
+
+    #[test]
+    fn tdata_container_output() {
+        let key1 = [11, 22, 33];
+        let key2 = [11, 33, 44];
+        let map = Container::new_map(10);
+        map.set_map(&key1, Container::Val(TestData::A));
+        map.set_map(&key2, Container::Val(TestData::A));
+        let mut out_vec = vec![]; 
+        let out_bytes = map.output_binary(&mut out_vec);
+        assert_eq!(out_vec.len(), 14);
+        assert_eq!(out_vec[0], VBIN_CMAP_BEGIN);
+        assert_eq!(out_vec[1], CMAPB_KEY);
+        assert_eq!(out_vec[2], 3);
+        assert_eq!(out_vec[6], 10);
+        assert_eq!(out_vec[7], CMAPB_KEY);
+        assert_eq!(out_vec[8], 3);
+        assert_eq!(out_vec[12], 10);
+        assert_eq!(out_vec[13], VBIN_CMAP_END);
+    }
 }
