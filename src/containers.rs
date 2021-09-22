@@ -397,4 +397,31 @@ mod tests {
             None => panic!("Expected value in parsed map for key {:?}", key1)
         }
     }
+
+    #[test]
+    fn nested_output() {
+        let key1 = [11, 22, 33];
+        let map = Container::new_map(10);
+        let nmap = Container::new_map(10);
+        nmap.set_map(&key1, Container::Val(TestData::A));
+        map.set_map(&key1, nmap);
+        let mut out_vec = vec![]; 
+        let out_bytes = map.output_binary(&mut out_vec);
+        assert_eq!(out_vec.len(), 15);
+        assert_eq!(out_vec[0], VBIN_CMAP_BEGIN);
+        assert_eq!(out_vec[1], CMAPB_KEY);
+        assert_eq!(out_vec[2], 3);
+        assert_eq!(out_vec[3], 11);
+        assert_eq!(out_vec[4], 22);
+        assert_eq!(out_vec[5], 33);
+        assert_eq!(out_vec[6], VBIN_CMAP_BEGIN);
+        assert_eq!(out_vec[7], CMAPB_KEY);
+        assert_eq!(out_vec[8], 3);
+        assert_eq!(out_vec[9], 11);
+        assert_eq!(out_vec[10], 22);
+        assert_eq!(out_vec[11], 33);
+        assert_eq!(out_vec[12], TEST_DATA_A);
+        assert_eq!(out_vec[13], VBIN_CMAP_END);
+        assert_eq!(out_vec[14], VBIN_CMAP_END);
+    }
 }
