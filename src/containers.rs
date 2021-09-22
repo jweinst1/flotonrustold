@@ -9,11 +9,6 @@ use crate::traits::*;
 use crate::constants::{VBIN_CMAP_BEGIN, VBIN_CMAP_END, CMAPB_KEY};
 
 #[derive(Debug)]
-pub enum ContainerErr {
-    KeyNotFound
-}
-
-#[derive(Debug)]
 pub enum Container<T> {
 	Val(T),
 	Map(HashTree<Shared<Container<T>>>)
@@ -90,6 +85,7 @@ impl<T: InPutOutPut + Debug> InPutOutPut for Container<T> {
                     return nmap;
                 }
             }
+            *place += 1; // move past end
             return nmap;
         } else {
             return Container::Val(T::input_binary(input, place));
@@ -243,19 +239,22 @@ mod tests {
         B
     }
 
+    const TEST_DATA_A:u8 = 10;
+    const TEST_DATA_B:u8 = 20;
+
     impl InPutOutPut for TestData {
         fn output_binary(&self, output: &mut Vec<u8>) {
             match self {
-                TestData::A => output.push(10),
-                TestData::B => output.push(20)
+                TestData::A => output.push(TEST_DATA_A),
+                TestData::B => output.push(TEST_DATA_B)
             }
         }
         fn input_binary(input:&[u8], place:&mut usize) -> Self {
             let byte = input[*place];
             *place += 1;
             match byte {
-                10 => TestData::A,
-                20 => TestData::B,
+                TEST_DATA_A => TestData::A,
+                TEST_DATA_B => TestData::B,
                 _ => panic!("Unexpected u8 : {:?}", byte)
             }
         }
@@ -274,10 +273,128 @@ mod tests {
         assert_eq!(out_vec[0], VBIN_CMAP_BEGIN);
         assert_eq!(out_vec[1], CMAPB_KEY);
         assert_eq!(out_vec[2], 3);
-        assert_eq!(out_vec[6], 10);
+        assert_eq!(out_vec[6], TEST_DATA_A);
         assert_eq!(out_vec[7], CMAPB_KEY);
         assert_eq!(out_vec[8], 3);
-        assert_eq!(out_vec[12], 10);
+        assert_eq!(out_vec[12], TEST_DATA_A);
         assert_eq!(out_vec[13], VBIN_CMAP_END);
+    }
+
+    #[test]
+    fn tdata_overwrite_output() {
+        let key1 = [11, 22, 33];
+        let key2 = [11, 22, 33];
+        let map = Container::new_map(10);
+        map.set_map(&key1, Container::Val(TestData::A));
+        map.set_map(&key2, Container::Val(TestData::B));
+        let mut out_vec = vec![]; 
+        let out_bytes = map.output_binary(&mut out_vec);
+        assert_eq!(out_vec.len(), 8);
+        assert_eq!(out_vec[0], VBIN_CMAP_BEGIN);
+        assert_eq!(out_vec[1], CMAPB_KEY);
+        assert_eq!(out_vec[2], 3);
+        assert_eq!(out_vec[3], 11);
+        assert_eq!(out_vec[4], 22);
+        assert_eq!(out_vec[5], 33);
+        assert_eq!(out_vec[6], TEST_DATA_B);
+        assert_eq!(out_vec[7], VBIN_CMAP_END);
+    }
+
+    #[test]
+    fn tdata_container_input() {
+        let key1 = [66, 77];
+        let key2 = [128, 77];
+        let input_bytes = [VBIN_CMAP_BEGIN, 
+                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B, 
+                           CMAPB_KEY, 2, key2[0], key2[1], TEST_DATA_A, 
+                           VBIN_CMAP_END];
+        let mut i = 0;
+        let parsed_map = Container::input_binary(&input_bytes, &mut i);
+        assert_eq!(i, 12);
+        match parsed_map.get_map(&key1) {
+            Some(contref) => match contref {
+                Container::Val(v) => match v {
+                    TestData::B => println!("{:?} passes", v),
+                    TestData::A => panic!("Expected B, but got A")
+                },
+                Container::Map(m) => panic!("Expected parsed value. got map: {:?}", m)
+            },
+            None => panic!("Expected value in parsed map for key {:?}", key1)
+        }
+
+        match parsed_map.get_map(&key2) {
+            Some(contref) => match contref {
+                Container::Val(v) => match v {
+                    TestData::A => println!("{:?} passes", v),
+                    TestData::B => panic!("Expected A, but got B")
+                },
+                Container::Map(m) => panic!("Expected parsed value. got map: {:?}", m)
+            },
+            None => panic!("Expected value in parsed map for key {:?}", key1)
+        }
+    }
+
+    #[test]
+    fn tdata_overwrite_input() {
+        let key1 = [128, 77];
+        let input_bytes = [VBIN_CMAP_BEGIN, 
+                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B, 
+                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_A, 
+                           VBIN_CMAP_END];
+        let mut i = 0;
+        let parsed_map = Container::input_binary(&input_bytes, &mut i);
+        assert_eq!(i, 12);
+        match parsed_map.get_map(&key1) {
+            Some(contref) => match contref {
+                Container::Val(v) => match v {
+                    TestData::A => println!("{:?} passes", v),
+                    TestData::B => panic!("Expected A, but got B")
+                },
+                Container::Map(m) => panic!("Expected parsed value. got map: {:?}", m)
+            },
+            None => panic!("Expected value in parsed map for key {:?}", key1)
+        }
+    }
+
+    #[test]
+    fn nested_input() {
+        let key1 = [200, 53];
+        let key2 = [100, 40];
+        let input_bytes = [VBIN_CMAP_BEGIN,
+                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_A,
+                           CMAPB_KEY, 2, key2[0], key2[1], VBIN_CMAP_BEGIN,
+                                                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B,
+                                                           VBIN_CMAP_END,
+                           VBIN_CMAP_END];
+        let mut i = 0;
+        let parsed_map = Container::input_binary(&input_bytes, &mut i);
+        assert_eq!(i, 18);
+        match parsed_map.get_map(&key1) {
+            Some(contref) => match contref {
+                Container::Val(v) => match v {
+                    TestData::A => println!("{:?} passes", v),
+                    TestData::B => panic!("Expected A, but got B")
+                },
+                Container::Map(m) => panic!("Expected parsed value. got map: {:?}", m)
+            },
+            None => panic!("Expected value in parsed map for key {:?}", key1)
+        }
+
+        match parsed_map.get_map(&key2) {
+            Some(contref) => match contref {
+                Container::Map(_) => match contref.get_map(&key1) {
+                    Some(contv) => match contv {
+                        Container::Val(v) => match v {
+                            TestData::B => println!("{:?} passes", v),
+                            TestData::A => panic!("Expected B but got A")
+                        },
+                        Container::Map(m) => panic!("Expected inner nest value, got map: {:?}", m)
+                    },
+                    None => panic!("Expected value for inner nested key {:?}", key1)
+                },
+                Container::Val(v) => panic!("Expected parsed map. got val: {:?}", v)
+            },
+            None => panic!("Expected value in parsed map for key {:?}", key1)
+        }
     }
 }
