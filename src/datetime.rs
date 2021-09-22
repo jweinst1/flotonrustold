@@ -1,6 +1,7 @@
 extern crate libc;
 use std::ptr;
 use std::fmt;
+use crate::errors::FlotonErr;
 use crate::traits::*;
 
 pub fn unix_time() -> libc::time_t {
@@ -23,9 +24,9 @@ impl NewType for DateTime {
 }
 
 impl DateTime {
-	pub fn set(&mut self, time_point:&libc::time_t) -> Result<(), ()> {
+	pub fn set(&mut self, time_point:&libc::time_t) -> Result<(), FlotonErr> {
 		if isnull!(unsafe { libc::gmtime_r(time_point, &mut self.data) } ) {
-			Err(())
+			Err(FlotonErr::DateTime)
 		} else {
 			self.data.tm_year += 1900; // tm_year is relative to 1900
 			self.data.tm_mon += 1; // 0-11 mon
@@ -34,7 +35,7 @@ impl DateTime {
 	}
 
 	#[inline]
-	pub fn set_to_now(&mut self) -> Result<(), ()> {
+	pub fn set_to_now(&mut self) -> Result<(), FlotonErr> {
 		self.set(&unix_time())
 	}
 }

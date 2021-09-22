@@ -1,11 +1,11 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
 pub mod constants;
+pub mod errors;
 pub mod traits;
 #[macro_use] pub mod macros;
 pub mod datetime;
 #[macro_use] pub mod logging;
-//pub mod buffers;
 pub mod signals;
 pub mod circular;
 pub mod trie;
