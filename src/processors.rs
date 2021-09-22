@@ -32,7 +32,7 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 		*place += key_len;
 	}
 	if !not_found  { 
-		(*cur_map).value().output_binary(output); 
+		(*cur_map).output_binary(output); 
 	}
 }
 
@@ -52,7 +52,7 @@ fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) {
 	*place += 1;
 	let harvested_key = &cmd[*place..(*place + key_len)];
 	*place += key_len;
-	let harvested_val = Container::Val(Value::input_binary(cmd, place));
+	let harvested_val = Container::input_binary(cmd, place);
 	(*cur_map).set_map(harvested_key, harvested_val);
 }
 
@@ -176,5 +176,23 @@ mod tests {
     	run_cmd(cmd_s_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
     	assert_eq!(out_buf[1], 1);
+    }
+
+    #[test]
+    fn setkv_map_works() {
+        tlocal::set_epoch();
+        let cont = Container::<Value>::new_map(10);
+        let key1 = [33, 55];
+        let keym = [22, 121];
+        let cmds = [constants::CMD_SET_KV, 1, 2, key1[0], key1[1], 
+                    constants::VBIN_CMAP_BEGIN,
+                    constants::CMAPB_KEY, 2, keym[0], keym[1], constants::VBIN_BOOL, 1,
+                    constants::VBIN_CMAP_END,
+                    constants::CMD_RETURN_KV, 2, 2, key1[0], key1[1], 2, keym[0], keym[1],
+                    constants::CMD_STOP];
+        let mut out_buf = Vec::<u8>::new();
+        run_cmd(&cmds, &cont, &mut out_buf);
+        assert_eq!(out_buf[0], constants::VBIN_BOOL);
+        assert_eq!(out_buf[1], 1);
     }
 }

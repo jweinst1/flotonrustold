@@ -262,6 +262,7 @@ mod tests {
 
     #[test]
     fn tdata_container_output() {
+        tlocal::set_epoch();
         let key1 = [11, 22, 33];
         let key2 = [11, 33, 44];
         let map = Container::new_map(10);
@@ -282,6 +283,7 @@ mod tests {
 
     #[test]
     fn tdata_overwrite_output() {
+        tlocal::set_epoch();
         let key1 = [11, 22, 33];
         let key2 = [11, 22, 33];
         let map = Container::new_map(10);
@@ -302,6 +304,7 @@ mod tests {
 
     #[test]
     fn tdata_container_input() {
+        tlocal::set_epoch();
         let key1 = [66, 77];
         let key2 = [128, 77];
         let input_bytes = [VBIN_CMAP_BEGIN, 
@@ -336,6 +339,7 @@ mod tests {
 
     #[test]
     fn tdata_overwrite_input() {
+        tlocal::set_epoch();
         let key1 = [128, 77];
         let input_bytes = [VBIN_CMAP_BEGIN, 
                            CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B, 
@@ -358,6 +362,7 @@ mod tests {
 
     #[test]
     fn nested_input() {
+        tlocal::set_epoch();
         let key1 = [200, 53];
         let key2 = [100, 40];
         let input_bytes = [VBIN_CMAP_BEGIN,
@@ -400,6 +405,7 @@ mod tests {
 
     #[test]
     fn nested_output() {
+        tlocal::set_epoch();
         let key1 = [11, 22, 33];
         let map = Container::new_map(10);
         let nmap = Container::new_map(10);
