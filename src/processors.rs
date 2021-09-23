@@ -1,7 +1,9 @@
+use std::ptr;
 use crate::constants;
 use crate::values::Value;
 use crate::tlocal;
 use crate::containers::Container;
+use crate::errors::FlotonErr;
 use crate::traits::*;
 use std::io::prelude::*;
 
@@ -10,15 +12,14 @@ use std::io::prelude::*;
  */
 
 
-fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) {
-    let mut key_stack = vec![];
+fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
+    let mut key_ptr = unsafe { cmd.as_ptr().offset(*place as isize) };
 	let key_depth = cmd[*place];
 	*place += 1;
 	let mut cur_map = data;
 	let mut not_found = false;
 	for _ in 0..key_depth {
 		let key_len = cmd[*place] as usize; // 1 byte for now
-        unsafe { key_stack.push(cmd.as_ptr().offset(*place as isize)); }
 		*place += 1;
 		if !not_found {
 			match (*cur_map).get_map(&cmd[*place..(*place + key_len)]) {
@@ -32,17 +33,19 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 		*place += key_len;
 	}
 	if !not_found  { 
-		(*cur_map).output_binary(output); 
-	}
+		(*cur_map).output_binary(output);
+        Ok(()) 
+	} else {
+        Err(FlotonErr::ReturnNotFound(key_ptr))
+    }
 }
 
 fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) {
-    let mut key_stack = vec![];
+    let mut _key_ptr = unsafe { cmd.as_ptr().offset(*place as isize) };
 	let key_depth = cmd[*place];
 	*place += 1;
 	let mut cur_map = data;
 	for _ in 0..(key_depth-1) {
-        unsafe { key_stack.push(cmd.as_ptr().offset(*place as isize)); }
 		let key_len = cmd[*place] as usize; // 1 byte for now
 		*place += 1;
 		cur_map = (*cur_map).create_set_map(&cmd[*place..(*place + key_len)], 30 /*todo make specify*/);
