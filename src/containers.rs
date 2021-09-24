@@ -269,7 +269,7 @@ mod tests {
         map.set_map(&key1, Container::Val(TestData::A));
         map.set_map(&key2, Container::Val(TestData::A));
         let mut out_vec = vec![]; 
-        let out_bytes = map.output_binary(&mut out_vec);
+        map.output_binary(&mut out_vec);
         assert_eq!(out_vec.len(), 14);
         assert_eq!(out_vec[0], VBIN_CMAP_BEGIN);
         assert_eq!(out_vec[1], CMAPB_KEY);

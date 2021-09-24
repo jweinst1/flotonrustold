@@ -19,7 +19,7 @@ pub const CMAPB_KEY:u8 = 2;
 
 //errors
 pub const ERR_DATE_TIME:u8 = 0;
-pub const ERR_RET_NOT_FOUND:u8 = 0;
+pub const ERR_RET_NOT_FOUND:u8 = 1;
 
 //db states
 pub const DBSTATE_START:u8 = 0;
