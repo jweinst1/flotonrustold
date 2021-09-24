@@ -6,6 +6,7 @@ use crate::tlocal;
 use crate::hashtree::{HashTree, HashScheme};
 use crate::logging::*;
 use crate::traits::*;
+use crate::errors::FlotonErr;
 use crate::constants::{VBIN_CMAP_BEGIN, VBIN_CMAP_END, CMAPB_KEY};
 
 #[derive(Debug)]
@@ -67,7 +68,7 @@ impl<T: InPutOutPut + Debug> InPutOutPut for Container<T> {
         }
     }
 
-    fn input_binary(input:&[u8], place:&mut usize) -> Self {
+    fn input_binary(input:&[u8], place:&mut usize) -> Result<Self, FlotonErr>  {
         if input[*place] == VBIN_CMAP_BEGIN {
             *place += 1;
             let nmap = Container::new_map(40); // todo make configurable
@@ -78,17 +79,22 @@ impl<T: InPutOutPut + Debug> InPutOutPut for Container<T> {
                     *place += 1;
                     let kslice = &input[*place..(*place + ksize)];
                     *place += ksize;
-                    let val = Container::input_binary(input, place);
-                    nmap.set_map(kslice, val);
+                    match Container::input_binary(input, place) {
+                        Ok(val) => nmap.set_map(kslice, val),
+                        Err(e) => return Err(e)
+                    }
                 } else {
-                    log_error!(Input, "Invalid byte for input: {}", input[*place]);
-                    return nmap;
+                    log_error!(Input, "Invalid byte for container: {}", input[*place]);
+                    return Err(FlotonErr::UnexpectedByte(input[*place]));
                 }
             }
             *place += 1; // move past end
-            return nmap;
+            return Ok(nmap);
         } else {
-            return Container::Val(T::input_binary(input, place));
+            return match T::input_binary(input, place) {
+                Ok(r) => Ok(Container::Val(r)),
+                Err(e) => Err(e)
+            }
         }
     }
 }
@@ -249,13 +255,13 @@ mod tests {
                 TestData::B => output.push(TEST_DATA_B)
             }
         }
-        fn input_binary(input:&[u8], place:&mut usize) -> Self {
+        fn input_binary(input:&[u8], place:&mut usize) -> Result<Self, FlotonErr> {
             let byte = input[*place];
             *place += 1;
             match byte {
-                TEST_DATA_A => TestData::A,
-                TEST_DATA_B => TestData::B,
-                _ => panic!("Unexpected u8 : {:?}", byte)
+                TEST_DATA_A => Ok(TestData::A),
+                TEST_DATA_B => Ok(TestData::B),
+                _ => Err(FlotonErr::UnexpectedByte(byte))
             }
         }
     }
@@ -312,7 +318,7 @@ mod tests {
                            CMAPB_KEY, 2, key2[0], key2[1], TEST_DATA_A, 
                            VBIN_CMAP_END];
         let mut i = 0;
-        let parsed_map = Container::input_binary(&input_bytes, &mut i);
+        let parsed_map = Container::input_binary(&input_bytes, &mut i).expect("Cannot parse map from bytes");
         assert_eq!(i, 12);
         match parsed_map.get_map(&key1) {
             Some(contref) => match contref {
@@ -346,7 +352,7 @@ mod tests {
                            CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_A, 
                            VBIN_CMAP_END];
         let mut i = 0;
-        let parsed_map = Container::input_binary(&input_bytes, &mut i);
+        let parsed_map = Container::input_binary(&input_bytes, &mut i).expect("Cannot parse map from bytes");
         assert_eq!(i, 12);
         match parsed_map.get_map(&key1) {
             Some(contref) => match contref {
@@ -372,7 +378,7 @@ mod tests {
                                                            VBIN_CMAP_END,
                            VBIN_CMAP_END];
         let mut i = 0;
-        let parsed_map = Container::input_binary(&input_bytes, &mut i);
+        let parsed_map = Container::input_binary(&input_bytes, &mut i).expect("Cannot parse map from bytes");
         assert_eq!(i, 18);
         match parsed_map.get_map(&key1) {
             Some(contref) => match contref {

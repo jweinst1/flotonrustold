@@ -1,9 +1,11 @@
 use std::ptr;
+use std::sync::atomic::Ordering;
 use crate::constants;
 use crate::values::Value;
 use crate::tlocal;
 use crate::containers::Container;
 use crate::errors::FlotonErr;
+use crate::logging::*;
 use crate::traits::*;
 use std::io::prelude::*;
 
@@ -40,7 +42,7 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
     }
 }
 
-fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) {
+fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) -> Result<(), FlotonErr> {
     let mut _key_ptr = unsafe { cmd.as_ptr().offset(*place as isize) };
 	let key_depth = cmd[*place];
 	*place += 1;
@@ -55,8 +57,10 @@ fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) {
 	*place += 1;
 	let harvested_key = &cmd[*place..(*place + key_len)];
 	*place += key_len;
-	let harvested_val = Container::input_binary(cmd, place);
-	(*cur_map).set_map(harvested_key, harvested_val);
+    match Container::input_binary(cmd, place) {
+        Ok(hval) => Ok((*cur_map).set_map(harvested_key, hval)),
+        Err(e) => Err(e)
+    }
 }
 
 pub fn run_cmd(cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) {
@@ -66,13 +70,32 @@ pub fn run_cmd(cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) {
 			constants::CMD_STOP => return,
 			constants::CMD_RETURN_KV  => {
 				i += 1;
-				run_cmd_returnkv(&mut i, cmd, data, output);
+				match run_cmd_returnkv(&mut i, cmd, data, output) {
+                    Err(e) => e.output_binary(output),
+                    Ok(_) => ()
+                }
 			},
 			constants::CMD_SET_KV => {
 				i += 1;
-				run_cmd_setkv(&mut i, cmd, data);
+				match run_cmd_setkv(&mut i, cmd, data) {
+                    Err(e) => { 
+                        e.output_binary(output);
+                        match e {
+                            FlotonErr::UnexpectedByte(b) => {
+                                log_error!(Input, "Unexpected set command byre: {}", b);
+                                return;
+                            },
+                            _ => ()
+                        } 
+                    },
+                    Ok(_) => ()
+                }
 			}
-			_ => panic!("Unexpected cmd byte {:?}", cmd[i])
+			_ => {
+                log_error!(Input, "Unexpected command byte: {}", cmd[i]);
+                FlotonErr::UnexpectedByte(cmd[i]).output_binary(output);
+                return;
+            }
 		}
 	}
 }

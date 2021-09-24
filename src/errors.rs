@@ -7,7 +7,8 @@ use crate::traits::*;
  #[derive(Debug)]
 pub enum FlotonErr {
 	DateTime,
-	ReturnNotFound(*const u8)
+	ReturnNotFound(*const u8),
+	UnexpectedByte(u8)
 }
 
 impl InPutOutPut for FlotonErr {
@@ -33,17 +34,21 @@ impl InPutOutPut for FlotonErr {
 						}
 					}
 				}
+			},
+			FlotonErr::UnexpectedByte(b) => {
+				output.push(ERR_UNEXPECT_BYTE);
+				output.push(*b);
 			}
 		}
 	}
 
-	fn input_binary(input:&[u8], place:&mut usize) -> Self {
+	fn input_binary(input:&[u8], place:&mut usize) -> Result<Self, FlotonErr> {
 		if input[*place] == VBIN_ERROR {
 			*place += 1;
 			let err_type = input[*place];
 			*place += 1;
 			match err_type {
-				ERR_DATE_TIME => FlotonErr::DateTime,
+				ERR_DATE_TIME => Ok(FlotonErr::DateTime),
 				ERR_RET_NOT_FOUND => unsafe {
 					let parsed = FlotonErr::ReturnNotFound(input.as_ptr().offset(*place as isize));
 					// advancement
@@ -56,12 +61,17 @@ impl InPutOutPut for FlotonErr {
 							*place += 1;
 						}
 					}
-					return parsed;
+					return Ok(parsed);
 				},
-				_ => panic!("Unexpected byte for err type :{}", err_type)
+				ERR_UNEXPECT_BYTE => {
+					let parsed = FlotonErr::UnexpectedByte(input[*place]);
+					*place += 1;
+					return Ok(parsed);
+				},
+				_ => return Err(FlotonErr::UnexpectedByte(err_type))
 			}
 		} else {
-			panic!("Unrecognized byte for input_binary on FlotonErr: {}", input[*place]);
+			return Err(FlotonErr::UnexpectedByte(input[*place]));
 		}
 	}
 }
@@ -101,7 +111,7 @@ mod tests {
     	            77
     	            ];
     	let mut i = 0;
-    	let err_obj = FlotonErr::input_binary(&keys, &mut i);
+    	let err_obj = FlotonErr::input_binary(&keys, &mut i).expect("Cannot parse the error from bytes");
     	assert_eq!(i, 7);
     	match err_obj {
     		FlotonErr::ReturnNotFound(ptr) => unsafe {
@@ -111,7 +121,7 @@ mod tests {
     			assert_eq!(*(ptr.offset(3)), 1);
     			assert_eq!(*(ptr.offset(4)), 77);			
     		},
-    		FlotonErr::DateTime => panic!("Execpted return not found error, but got date time error")
+    		_=> panic!("Execpted return not found error, but got different error {:?}", err_obj)
     	}
     }
 }

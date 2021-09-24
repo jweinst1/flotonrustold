@@ -1,3 +1,4 @@
+use crate::errors::FlotonErr;
 
 pub trait NewType {
 	fn new() -> Self;
@@ -5,6 +6,6 @@ pub trait NewType {
 
 pub trait InPutOutPut {
 	fn output_binary(&self, output: &mut Vec<u8>);
-	fn input_binary(input:&[u8], place:&mut usize) -> Self;
+	fn input_binary(input:&[u8], place:&mut usize) -> Result<Self, FlotonErr> where Self: Sized;
 	// In the future, more output forms may be supported
 }

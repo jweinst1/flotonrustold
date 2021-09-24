@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::io::prelude::*;
 use crate::constants;
+use crate::errors::FlotonErr;
 use crate::traits::*;
 
 #[derive(Debug)]
@@ -35,25 +36,25 @@ impl InPutOutPut for Value {
 		}
 	}
 
-	fn input_binary(input:&[u8], place:&mut usize) -> Self {
+	fn input_binary(input:&[u8], place:&mut usize) -> Result<Self, FlotonErr> {
 		match input[*place] {
 			constants::VBIN_NOTHING => {
 				*place += 1;
-				Value::Nothing
+				Ok(Value::Nothing)
 			},
 			constants::VBIN_BOOL => {
 				*place += 1;
 				let to_ret = Value::Bool(*place != 0);
 				*place += 1;
-				to_ret
+				Ok(to_ret)
 			},
 			constants::VBIN_ABOOL => {
 				*place += 1;
 				let to_ret = Value::ABool(AtomicBool::new(*place != 0));
 				*place += 1;
-				to_ret		
+				Ok(to_ret)		
 			},
-			_ => panic!("Unknown input byte value, {:?}", input[*place])
+			_ => Err(FlotonErr::UnexpectedByte(input[*place]))
 		}
 	}
 }
