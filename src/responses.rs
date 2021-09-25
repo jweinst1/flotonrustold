@@ -47,12 +47,13 @@ impl Response {
 	    		Err(e) => { log_error!(Connections, "Got Error for writing response header: {}", e); return false; }
 			}
 		}
-
-		loop {
-			match stream.write_all(self.body.as_slice()) {
-	    		Ok(_) => break,
-	    		Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => thread::yield_now(),
-	    		Err(e) => { log_error!(Connections, "Got Error for writing response body {}", e); return false; }
+		if self.header.total_size > 0 {
+			loop {
+				match stream.write_all(self.body.as_slice()) {
+		    		Ok(_) => break,
+		    		Err(ref e) if e.kind() == io::ErrorKind::WouldBlock => thread::yield_now(),
+		    		Err(e) => { log_error!(Connections, "Got Error for writing response body {}", e); return false; }
+				}
 			}
 		}
 		true

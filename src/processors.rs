@@ -221,4 +221,26 @@ mod tests {
         assert_eq!(out_buf[0], constants::VBIN_BOOL);
         assert_eq!(out_buf[1], 1);
     }
+
+    #[test]
+    fn ret_not_found_works() {
+        tlocal::set_epoch();
+        let cont = Container::<Value>::new_map(10);
+        let key1 = [33, 55];
+        let keym = [22, 121];
+        let cmds = [constants::CMD_RETURN_KV, 2, 2, key1[0], key1[1], 2, keym[0], keym[1],
+                    constants::CMD_STOP];
+        let mut out_buf = Vec::<u8>::new();
+        run_cmd(&cmds, &cont, &mut out_buf);
+        assert_eq!(out_buf.len(), 9);
+        assert_eq!(out_buf[0], constants::VBIN_ERROR);
+        assert_eq!(out_buf[1], constants::ERR_RET_NOT_FOUND);
+        assert_eq!(out_buf[2], 2);
+        assert_eq!(out_buf[3], 2);
+        assert_eq!(out_buf[4], key1[0]);
+        assert_eq!(out_buf[5], key1[1]);
+        assert_eq!(out_buf[6], 2);
+        assert_eq!(out_buf[7], keym[0]);
+        assert_eq!(out_buf[8], keym[1]);
+    }
 }

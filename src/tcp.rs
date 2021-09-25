@@ -2,6 +2,7 @@ use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, AtomicPtr, Ordering}
 use std::thread;
 use std::net::{TcpListener, TcpStream, Shutdown};
 use std::time::Duration;
+use std::process::exit;
 use std::io;
 use crate::threading::{Switch, TVal, ExecUnitGroup, Parker};
 use crate::traits::*;
@@ -72,7 +73,13 @@ impl<T: 'static> TcpServer<T> {
 		let shut = Switch::new();
 		let tshut = shut.clone();
 		let mut egroup = ExecUnitGroup::new(init_th_count, th_qsize, func);
-		let listener = TcpListener::bind((addr.as_str(), port)).unwrap();
+		let listener = match TcpListener::bind((addr.as_str(), port)) {
+			Ok(l) => l,
+			Err(_) => {
+				log_fatal!(Tcp, "The port {} is already in use.", port);
+				exit(1); // todo exit codes
+			}
+		};
 		log_info!(Tcp, "Will listen for connections on port {} at address: {}", port, addr);
 		let tlistener = listener.try_clone().unwrap();
 		match tlistener.set_nonblocking(true) {
@@ -92,12 +99,13 @@ impl<T: 'static> TcpServer<T> {
 					break;
 				}
 				match tlistener.accept() {
-					Ok((_socket, _)) => {
-						//println!("Got request from {:?}", addr);
+					Ok((_socket, client_addr)) => {
+						log_trace!(Tcp, "Got connection from {}", client_addr);
 						let req = alloc!(TcpServerStream(_socket, tcontext.clone()));
 						match egroup.assign_retried(req, 10, Duration::from_millis(100)) {
 							None => {
 								// can't handle it
+								log_warn!(Tcp, "Too busy to handle connection from {}", client_addr);
 								free!(req);
 								tparker.do_park(false);
 							},
