@@ -62,7 +62,7 @@ impl Database {
 		let mut output:Vec<u8> = vec![];
 		let req = Request::parse(&mut tstream.0).unwrap();
 		processors::run_cmd(&req.body, &context.data, &mut output);
-		let resp = Response::from_vec(output, 0);
+		let resp = Response::from_vec(output);
 		resp.to_tcp_stream(&mut tstream.0);
 	}
 
@@ -143,16 +143,16 @@ mod tests {
         let set_value = [VBIN_BOOL, 1];
         let set_key1 = [CMD_SET_KV, 1, 2, key1[0], key1[1], set_value[0], set_value[1], CMD_STOP];
         let get_key1 = [CMD_RETURN_KV, 1, 2, key1[0], key1[1], CMD_STOP];
-        let set_key1_size:u32 =  8;
-        let get_key1_size:u32 =  6;
+        let set_key1_size:u64 =  8;
+        let get_key1_size:u64 =  6;
         let set_sbytes = set_key1_size.to_le_bytes();
         let get_sbytes = get_key1_size.to_le_bytes();
         let set_cmd = [set_sbytes[0], set_sbytes[1], set_sbytes[2], set_sbytes[3], // size
-                       0, 0, 0, 0, // flags
+                       set_sbytes[4], set_sbytes[5], set_sbytes[6], set_sbytes[7], 
                        set_key1[0], set_key1[1], set_key1[2], set_key1[3], set_key1[4], set_key1[5], set_key1[6], set_key1[7]];
 
         let get_cmd = [get_sbytes[0], get_sbytes[1], get_sbytes[2], get_sbytes[3], // size
-                       0, 0, 0, 0, // flags
+                       get_sbytes[4], get_sbytes[5], get_sbytes[6], get_sbytes[7], 
                        get_key1[0], get_key1[1], get_key1[2], get_key1[3], get_key1[4], get_key1[5]];
         let mut db = Database::new_for_testing();
         log_debug!(TESTbasic_set_get_works, "Set Req: {:?}", set_cmd);

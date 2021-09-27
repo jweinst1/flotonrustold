@@ -11,8 +11,7 @@ use crate::logging::*;
 
 #[derive(Debug, Clone)]
 struct RequestHeader {
-	total_size:u32,
-	flags:u32
+	total_size:u64
 }
 
 #[derive(Debug)]
@@ -23,7 +22,7 @@ pub struct Request {
 
 impl NewType for Request {
 	fn new() -> Self {
-		Request{header:RequestHeader{total_size:0, flags:0}, body:Vec::<u8>::new()}
+		Request{header:RequestHeader{total_size:0}, body:Vec::<u8>::new()}
 	}
 }
 
@@ -42,8 +41,7 @@ impl Request {
 				}
 			}
 		}
-		req.header.total_size = u32::from_le_bytes(head_buf[0..4].try_into().unwrap());
-		req.header.flags = u32::from_le_bytes(head_buf[4..8].try_into().unwrap());
+		req.header.total_size = u64::from_le_bytes(head_buf);
 		req.body.resize(req.header.total_size as usize, 0);
 		loop {
 			match stream.read_exact(req.body.as_mut_slice()) {
@@ -71,16 +69,13 @@ mod tests {
 		];
 		let listener = TcpListener::bind(&addrs[..]).unwrap();
 		let mut client = TcpStream::connect(&addrs[..]).unwrap();
-		let sizer:u32 = 4;
-		let flags:u32 = 1;
+		let sizer:u64 = 4;
 		let bytes:[u8;4] = [55, 22, 33, 44];
 		client.write(&sizer.to_le_bytes()).unwrap();
-		client.write(&flags.to_le_bytes()).unwrap();
 		client.write(&bytes).unwrap();
 		let (mut received, _addr) = listener.accept().unwrap();
 		println!("Got req from {:?}", _addr);
 		let req = Request::parse(&mut received).unwrap();
-		assert_eq!(req.header.flags, 1);
 		assert_eq!(req.header.total_size, 4);
 		assert_eq!(req.body.len(), 4);
 		assert_eq!(req.body[0], bytes[0]);

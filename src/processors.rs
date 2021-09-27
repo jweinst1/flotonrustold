@@ -48,12 +48,12 @@ fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) -> Result
 	*place += 1;
 	let mut cur_map = data;
 	for _ in 0..(key_depth-1) {
-		let key_len = cmd[*place] as usize; // 1 byte for now
+		let key_len = cmd[*place] as usize; // 1 byte
 		*place += 1;
 		cur_map = (*cur_map).create_set_map(&cmd[*place..(*place + key_len)], 30 /*todo make specify*/);
 		*place += key_len;
 	}
-	let key_len = cmd[*place] as usize; // 1 byte for now
+	let key_len = cmd[*place] as usize; // 1 byte
 	*place += 1;
 	let harvested_key = &cmd[*place..(*place + key_len)];
 	*place += key_len;
