@@ -8,7 +8,6 @@ pub mod datetime;
 #[macro_use] pub mod logging;
 pub mod signals;
 pub mod circular;
-//pub mod keys;
 pub mod trie;
 pub mod tlocal;
 pub mod values;

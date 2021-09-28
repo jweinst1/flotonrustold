@@ -11,12 +11,29 @@ static DEFAULT_HASH_BASE:u64 = 0x5331;
 pub struct HashScheme( /*Base */u64);
 
 impl HashScheme {
-	fn hash(&self, data:&[u8]) -> u64 {
-		let mut base = self.0;
-		for b in data.iter() {
-			base = ((base << (*b & 0x2a)) | (base >> (*b & 0x2a))) ^ (*b as u64);
+	fn hash(&self, data:&[u8], align:usize) -> u64 {
+		match align {
+			1 => {
+				let mut base = self.0;
+				for b in data.iter() {
+					base = ((base << (*b & 0x2a)) | (base >> (*b & 0x2a))) ^ (*b as u64);
+				}
+				base
+			},
+			8 => {
+				let mut base = self.0;
+				let aligned = unsafe { data.align_to::<u64>() };
+				// Asssert on perfect alignment
+				debug_assert!(aligned.0.len() == 0);
+				debug_assert!(aligned.2.len() == 0);
+				let aligned_data = aligned.1;
+				for i in 0..aligned_data.len() {
+					base = ((base << 29) | (base >> 29)) ^ aligned_data[i];
+				}
+				base
+			},
+			_ => panic!("Unsupported alignment for HashScheme: {:?}", align)
 		}
-		base
 	}
 
 	fn evolve(&self) -> HashScheme {
@@ -56,6 +73,19 @@ impl<T> Drop for HashTree<T> {
     }
 }
 
+fn compare_aligned(lfs:&[u8], rfs:&[u8], align:usize) -> bool {
+	match align {
+		1 => lfs == rfs,
+		8 => {
+			let aligned_lfs = unsafe { lfs.align_to::<u64>() };
+			let aligned_rfs = unsafe { rfs.align_to::<u64>() };
+			debug_assert!(aligned_lfs.0.len() == 0  && aligned_lfs.2.len() == 0 && aligned_rfs.0.len() == 0  && aligned_rfs.2.len() == 0);
+			aligned_lfs.1 == aligned_rfs.1
+		}
+		_ => panic!("Unsupported alignment for compare_aligned: {:?}", align)
+	}
+}
+
 impl<T: Debug + NewType> HashTree<T> {
 	pub fn new_table(hasher:HashScheme, slot_count:usize) -> HashTree<T> {
 		let mut slots = vec![];
@@ -78,13 +108,13 @@ impl<T: Debug + NewType> HashTree<T> {
 	}
 
 	pub fn find_string(&self, key:&str) -> Option<&T> {
-		self.find_bytes(key.as_bytes())
+		self.find_bytes(key.as_bytes(), 1)
 	}
 
-	pub fn find_bytes(&self, key:&[u8]) -> Option<&T> {
+	pub fn find_bytes(&self, key:&[u8], align:usize) -> Option<&T> {
 		match self {
 			HashTree::Table(hasher, slots) => {
-				let hashed_idx = hasher.hash(key) % (slots.len() as u64);
+				let hashed_idx = hasher.hash(key, align) % (slots.len() as u64);
 				let find_slot = &slots[hashed_idx as usize];
 				let slot_ptr = find_slot.load(Ordering::SeqCst);
 				if slot_ptr == ptr::null_mut() {
@@ -93,13 +123,13 @@ impl<T: Debug + NewType> HashTree<T> {
 				let slot_ref = unsafe { slot_ptr.as_ref().unwrap() };
 				match slot_ref {
 					HashTree::Item(k, v, p) => {
-						if k.deref() == key {
+						if compare_aligned(k.deref(), key, align) {
 							return Some(v);
 						}
 						unsafe {
 							match p.load(Ordering::SeqCst).as_ref() {
 								Some(coll_ref) => {
-									return coll_ref.find_bytes(key);
+									return coll_ref.find_bytes(key, align);
 								},
 								None => { return None; }
 							}
@@ -113,13 +143,13 @@ impl<T: Debug + NewType> HashTree<T> {
 	}
 
 	pub fn insert_string(&self, key:&str) -> &T {
-		self.insert_bytes(key.as_bytes())
+		self.insert_bytes(key.as_bytes(), 1)
 	}
 
-	pub fn insert_bytes(&self, key:&[u8]) -> &T {
+	pub fn insert_bytes(&self, key:&[u8], align:usize) -> &T {
 		match self {
 			HashTree::Table(hasher, slots) => {
-				let hashed_idx = hasher.hash(key) % (slots.len() as u64);
+				let hashed_idx = hasher.hash(key, align) % (slots.len() as u64);
 				let insert_slot = &slots[hashed_idx as usize];
 				let slot_ptr = insert_slot.load(Ordering::SeqCst);
 				if slot_ptr != ptr::null_mut() {
@@ -127,22 +157,22 @@ impl<T: Debug + NewType> HashTree<T> {
 						let slot_ref = slot_ptr.as_ref().unwrap();
 						match slot_ref {
 							HashTree::Item(k, v, p) => {
-								if k.deref() == key {
+								if compare_aligned(k.deref(), key, align) {
 									return v;
 								} else {
 									// collission
 									match p.load(Ordering::SeqCst).as_ref() {
-										Some(coll_ref) => return coll_ref.insert_bytes(key),
+										Some(coll_ref) => return coll_ref.insert_bytes(key, align),
 										None => {
 											let coll_table = Box::into_raw(
 												                Box::new(HashTree::new_table(hasher.evolve(), slots.len())
 												                	)
 												                );
 											match p.compare_exchange(ptr::null_mut(), coll_table, Ordering::SeqCst, Ordering::SeqCst) {
-												Ok(_) => return coll_table.as_ref().unwrap().insert_bytes(key),
+												Ok(_) => return coll_table.as_ref().unwrap().insert_bytes(key, align),
 												Err(p_seen) => {
 												    drop(Box::from_raw(coll_table)); 
-													return p_seen.as_ref().unwrap().insert_bytes(key); 
+													return p_seen.as_ref().unwrap().insert_bytes(key, align); 
 												}
 											}
 										}
@@ -164,22 +194,22 @@ impl<T: Debug + NewType> HashTree<T> {
 						let coll_ref = p_seen.as_ref().unwrap();
 						match coll_ref {
 							HashTree::Item(k, v, p) => {
-								if k.deref() == key {
+								if compare_aligned(k.deref(), key, align) {
 									// correct slot
 									return &v;
 								} else {
 									match p.load(Ordering::SeqCst).as_ref() {
-										Some(coll_ref) => return coll_ref.insert_bytes(key),
+										Some(coll_ref) => return coll_ref.insert_bytes(key, align),
 										None => {
 											let coll_table = Box::into_raw(
 												                Box::new(HashTree::new_table(hasher.evolve(), slots.len())
 												                	)
 												                );
 											match p.compare_exchange(ptr::null_mut(), coll_table, Ordering::SeqCst, Ordering::SeqCst) {
-												Ok(_) => return coll_table.as_ref().unwrap().insert_bytes(key),
+												Ok(_) => return coll_table.as_ref().unwrap().insert_bytes(key, align),
 												Err(p_seen) => {
 												    drop(Box::from_raw(coll_table)); 
-													return p_seen.as_ref().unwrap().insert_bytes(key); 
+													return p_seen.as_ref().unwrap().insert_bytes(key, align); 
 												}
 											}
 										}
@@ -223,9 +253,23 @@ mod tests {
     	tlocal::set_epoch();
     	let hs = HashScheme::default();
     	let s = String::from("Hello!");
-    	let hash1 = hs.hash(s.as_bytes());
+    	let hash1 = hs.hash(s.as_bytes(), 1);
     	let hs2 = hs.evolve();
-    	let hash2 = hs2.hash(s.as_bytes());
+    	let hash2 = hs2.hash(s.as_bytes(), 1);
+    	assert!(hash1 != hash2);
+    }
+
+    #[test]
+    fn evolve_hash_aligned_works() {
+    	tlocal::set_epoch();
+    	let hs = HashScheme::default();
+    	let data:[u64;4] = [554, 334, 886, 9220];
+    	let aligned = unsafe { data.align_to::<u8>() };
+    	assert_eq!(aligned.0.len(), 0);
+    	assert_eq!(aligned.2.len(), 0);
+    	let hash1 = hs.hash(aligned.1, 8);
+    	let hs2 = hs.evolve();
+    	let hash2 = hs2.hash(aligned.1, 8);
     	assert!(hash1 != hash2);
     }
 

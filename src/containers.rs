@@ -114,7 +114,7 @@ impl<T: Debug> Container<T> {
 	pub fn set_map(&self, key:&[u8], val:Container<T>) {
 		match self {
 			Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
-			Container::Map(m) => m.insert_bytes(key).write(TimePtr::make(val))
+			Container::Map(m) => m.insert_bytes(key, 1).write(TimePtr::make(val))
 		}
 	}
 
@@ -122,7 +122,7 @@ impl<T: Debug> Container<T> {
         match self {
             Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
             Container::Map(m) => {
-                let location = m.insert_bytes(key);
+                let location = m.insert_bytes(key, 1);
                 // first, check if map already exists
                 unsafe {
                     match location.read().as_ref() {
@@ -145,14 +145,14 @@ impl<T: Debug> Container<T> {
     pub fn get_map_shared(&self, key:&[u8]) -> Option<&Shared<Container<T>>> {
         match self {
             Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
-            Container::Map(m) => m.find_bytes(key)
+            Container::Map(m) => m.find_bytes(key, 1)
         }
     }
 
     pub fn get_map(&self, key:&[u8]) -> Option<&Container<T>> {
         match self {
             Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
-            Container::Map(m) => match m.find_bytes(key) {
+            Container::Map(m) => match m.find_bytes(key, 1) {
                 Some(refval) => unsafe { match refval.read().as_ref() {
                     Some(r) => Some(&r.0),
                     None => None
@@ -178,7 +178,7 @@ mod tests {
         let val = Container::Val(TestType(10));
         map.set_map(key, val);
         match map {
-            Container::Map(m) => match m.find_bytes(key) {
+            Container::Map(m) => match m.find_bytes(key, 1) {
                 Some(r) => unsafe { match r.read().as_ref() {
                     Some(rval) => assert_eq!(rval.0.value().0, 10),
                     None => panic!("Unexpected nullptr from shared loc {:?}", r)
