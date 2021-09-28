@@ -229,6 +229,8 @@ impl<T: Debug + NewType> HashTree<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
+
     #[derive(Debug)]
     struct TestType(AtomicU32);
 
@@ -286,6 +288,22 @@ mod tests {
     }
 
     #[test]
+    fn insert_aligned_works() {
+    	tlocal::set_epoch();
+    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
+    	let data:[u64;4] = [556, 332, 776, 4433];
+    	let aligned = unsafe { data.align_to::<u8>() };
+    	assert_eq!(aligned.0.len(), 0);
+    	assert_eq!(aligned.2.len(), 0);
+    	let key = aligned.1;
+    	let v = tree.insert_bytes(key, 8);
+    	v.set(6);
+    	let v2 = tree.insert_bytes(key, 8);
+    	assert_eq!(v.get(), v2.get());
+    	assert_eq!(v2.get(), 6);
+    }
+
+    #[test]
     fn find_basic_works() {
     	tlocal::set_epoch();
     	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
@@ -298,11 +316,27 @@ mod tests {
     }
 
     #[test]
+    fn find_aligned_works() {
+    	tlocal::set_epoch();
+    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
+    	let data:[u64;4] = [52376, 33122, 76376, 4433];
+    	let aligned = unsafe { data.align_to::<u8>() };
+    	assert_eq!(aligned.0.len(), 0);
+    	assert_eq!(aligned.2.len(), 0);
+    	let key = aligned.1;
+    	let v = tree.insert_bytes(key, 8);
+    	v.set(5);
+    	let found = tree.find_bytes(key, 8).unwrap();
+    	assert_eq!(v.get(), found.get());
+    	assert_eq!(found.get(), 5);
+    }
+
+    #[test]
     fn mt_find_works() {
     	tlocal::set_epoch();
     	let mut tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
-    	let t1 = thcall!(10, tree.insert_string("Hapy"));
-    	let t2 = thcall!(10, tree.insert_string("Sad"));
+    	let t1 = thcall!(5, 10, tree.insert_string("Hapy"));
+    	let t2 = thcall!(5, 10, tree.insert_string("Sad"));
     	tree.insert_string("Happy");
     	match tree.find_string("Happy") {
     		None => panic!("Didn't find string 'Happy'"),
@@ -328,5 +362,38 @@ mod tests {
     	assert_eq!(v1.get(), tree.find_string(key1).unwrap().get());
     	assert_eq!(v2.get(), tree.find_string(key2).unwrap().get());
     	assert_eq!(v3.get(), tree.find_string(key3).unwrap().get());
+    }
+
+    #[test]
+    fn find_aligned_multi_works() {
+    	tlocal::set_epoch();
+    	let tree = HashTree::<TestType>::new_table(HashScheme::default(), 10);
+    	let data1:[u64;4] = [52373, 33129, 76376, 44773];
+    	let aligned1 = unsafe { data1.align_to::<u8>() };
+    	assert_eq!(aligned1.0.len(), 0);
+    	assert_eq!(aligned1.2.len(), 0);
+    	let key1 = aligned1.1;
+
+    	let data2:[u64;4] = [523006, 331299, 7376, 433];
+    	let aligned2 = unsafe { data2.align_to::<u8>() };
+    	assert_eq!(aligned2.0.len(), 0);
+    	assert_eq!(aligned2.2.len(), 0);
+    	let key2 = aligned2.1;
+
+    	let data3:[u64;4] = [526, 33122, 9976, 490033];
+    	let aligned3 = unsafe { data3.align_to::<u8>() };
+    	assert_eq!(aligned3.0.len(), 0);
+    	assert_eq!(aligned3.2.len(), 0);
+    	let key3 = aligned3.1;
+
+    	let v1 = tree.insert_bytes(key1, 8);
+    	let v2 = tree.insert_bytes(key2, 8);
+    	let v3 = tree.insert_bytes(key3, 8);
+    	v1.set(1);
+    	v2.set(2);
+    	v3.set(3);
+    	assert_eq!(v1.get(), tree.find_bytes(key1, 8).unwrap().get());
+    	assert_eq!(v2.get(), tree.find_bytes(key2, 8).unwrap().get());
+    	assert_eq!(v3.get(), tree.find_bytes(key3, 8).unwrap().get());
     }
 }

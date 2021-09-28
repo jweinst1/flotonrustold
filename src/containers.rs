@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 use std::sync::atomic::Ordering;
 use std::ptr;
+use std::ops::Deref;
 use crate::shared::*;
 use crate::tlocal;
 use crate::hashtree::{HashTree, HashScheme};
@@ -28,11 +29,10 @@ fn hash_tree_cont_output_binary<T: InPutOutPut + Debug>(tree:&HashTree<Shared<Co
                             if nonull!(current_val) {
                                 // annotates a key
                                 output.push(CMAPB_KEY);
-                                // 1 byte for size, for now
-                                output.push(ikey.len() as u8);
-                                for j in 0..ikey.len() {
-                                    output.push(ikey[j]);
-                                }
+                                // only u64 aligned keys are supported
+                                let len_u64 = ikey.len() as u64;
+                                output.extend_from_slice(&len_u64.to_le_bytes());
+                                output.extend_from_slice(ikey.deref())
                                 current_val.as_ref().unwrap().0.output_binary(output);
                             }
                             // also add collided key-value pairs
@@ -75,8 +75,9 @@ impl<T: InPutOutPut + Debug> InPutOutPut for Container<T> {
             while input[*place] != VBIN_CMAP_END {
                 if input[*place] == CMAPB_KEY {
                     *place += 1;
-                    let ksize = input[*place] as usize;
-                    *place += 1;
+                    let key_ptr = unsafe { input.as_ptr().offset(*place as isize) as *const u64 };
+                    let ksize = (unsafe { *key_ptr }) as usize;
+                    *place += 8;
                     let kslice = &input[*place..(*place + ksize)];
                     *place += ksize;
                     match Container::input_binary(input, place) {
@@ -114,7 +115,7 @@ impl<T: Debug> Container<T> {
 	pub fn set_map(&self, key:&[u8], val:Container<T>) {
 		match self {
 			Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
-			Container::Map(m) => m.insert_bytes(key, 1).write(TimePtr::make(val))
+			Container::Map(m) => m.insert_bytes(key, 8).write(TimePtr::make(val))
 		}
 	}
 
@@ -122,7 +123,7 @@ impl<T: Debug> Container<T> {
         match self {
             Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
             Container::Map(m) => {
-                let location = m.insert_bytes(key, 1);
+                let location = m.insert_bytes(key, 8);
                 // first, check if map already exists
                 unsafe {
                     match location.read().as_ref() {
@@ -145,14 +146,14 @@ impl<T: Debug> Container<T> {
     pub fn get_map_shared(&self, key:&[u8]) -> Option<&Shared<Container<T>>> {
         match self {
             Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
-            Container::Map(m) => m.find_bytes(key, 1)
+            Container::Map(m) => m.find_bytes(key, 8)
         }
     }
 
     pub fn get_map(&self, key:&[u8]) -> Option<&Container<T>> {
         match self {
             Container::Val(v) => panic!("Expected Map, got Val({:?})", v),
-            Container::Map(m) => match m.find_bytes(key, 1) {
+            Container::Map(m) => match m.find_bytes(key, 8) {
                 Some(refval) => unsafe { match refval.read().as_ref() {
                     Some(r) => Some(&r.0),
                     None => None
@@ -178,7 +179,7 @@ mod tests {
         let val = Container::Val(TestType(10));
         map.set_map(key, val);
         match map {
-            Container::Map(m) => match m.find_bytes(key, 1) {
+            Container::Map(m) => match m.find_bytes(key, 8) {
                 Some(r) => unsafe { match r.read().as_ref() {
                     Some(rval) => assert_eq!(rval.0.value().0, 10),
                     None => panic!("Unexpected nullptr from shared loc {:?}", r)
