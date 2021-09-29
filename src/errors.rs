@@ -1,5 +1,8 @@
+use std::slice;
+use std::sync::atomic::Ordering;
 use crate::constants::*;
 use crate::traits::*;
+use crate::logging::*;
 
 /**
  * A generic error type that covers any non-fatal error
@@ -7,7 +10,7 @@ use crate::traits::*;
  #[derive(Debug)]
 pub enum FlotonErr {
 	DateTime,
-	ReturnNotFound(*const u8),
+	ReturnNotFound(*const u64),
 	UnexpectedByte(u8)
 }
 
@@ -22,16 +25,14 @@ impl InPutOutPut for FlotonErr {
 				output.push(ERR_RET_NOT_FOUND);
 				unsafe {
 					let key_depth = *key_ptr;
-					output.push(key_depth);
-					key_ptr = key_ptr.offset(1);
+					output.extend_from_slice(&key_depth.to_le_bytes());
+					key_ptr = key_ptr.offset(1 as isize);
 					for _ in 0..key_depth {
 						let key_len = *key_ptr;
-						output.push(key_len);
-						key_ptr = key_ptr.offset(1);
-						for _ in 0..key_len {
-							output.push(*key_ptr);
-							key_ptr = key_ptr.offset(1);
-						}
+						output.extend_from_slice(&key_len.to_le_bytes());
+						key_ptr = key_ptr.offset(1 as isize);
+						unsafe { output.extend_from_slice(slice::from_raw_parts(key_ptr, key_len as usize).align_to::<u8>().1); }
+						key_ptr = key_ptr.offset(key_len as isize);
 					}
 				}
 			},
@@ -50,18 +51,19 @@ impl InPutOutPut for FlotonErr {
 			match err_type {
 				ERR_DATE_TIME => Ok(FlotonErr::DateTime),
 				ERR_RET_NOT_FOUND => unsafe {
-					let parsed = FlotonErr::ReturnNotFound(input.as_ptr().offset(*place as isize));
+					let parsed_ptr = input.as_ptr().offset(*place as isize) as *const u64;
+					let mut read_ptr = parsed_ptr;
 					// advancement
-					let key_depth = input[*place];
-					*place += 1;
+					let key_depth = unsafe { *read_ptr };
+					*place += 8;
+					read_ptr = read_ptr.offset(1 as isize);
 					for _ in 0..key_depth {
-						let key_len = input[*place];
-						*place += 1;
-						for _ in 0..key_len {
-							*place += 1;
-						}
+						let key_len = unsafe { *read_ptr };
+						read_ptr = read_ptr.offset((1 + key_len) as isize);
+						*place += (8 + (key_len * 8)) as usize;
+						
 					}
-					return Ok(parsed);
+					return Ok(FlotonErr::ReturnNotFound(parsed_ptr));
 				},
 				ERR_UNEXPECT_BYTE => {
 					let parsed = FlotonErr::UnexpectedByte(input[*place]);
@@ -82,17 +84,23 @@ mod tests {
 
     #[test]
     fn err_out_works() {
-    	let keys = [2, // depth
-    	            1, // len
-    	            66,
-    	            1, // len
-    	            77,
-    	            3 // some value
-    	            ];
-    	let err_obj = FlotonErr::ReturnNotFound((&keys).as_ptr());
+    	logging_test_set(LOG_LEVEL_DEBUG);
+    	let mut keys = Vec::<u8>::new();
+    	let key_depth:u64 = 2;
+    	let key_length:u64 = 1;
+    	let key_1:u64 = 66;
+    	let key_2:u64 = 77;
+    	keys.extend_from_slice(&key_depth.to_le_bytes());
+    	keys.extend_from_slice(&key_length.to_le_bytes());
+    	keys.extend_from_slice(&key_1.to_le_bytes());
+    	keys.extend_from_slice(&key_length.to_le_bytes());
+    	keys.extend_from_slice(&key_2.to_le_bytes());
+    	keys.push(3);
+    	let err_obj = FlotonErr::ReturnNotFound((&keys).as_ptr() as *const u64);
     	let mut buf = vec![];
     	err_obj.output_binary(&mut buf);
-    	assert_eq!(buf.len(), 7);
+    	log_debug!(TESTerr_out_works, "buf vec is {:?}", buf);
+    	assert_eq!(buf.len(), 42);
     	assert_eq!(buf[0], VBIN_ERROR);
     	assert_eq!(buf[1], ERR_RET_NOT_FOUND);
     	assert_eq!(buf[2], keys[0]);
@@ -104,15 +112,24 @@ mod tests {
 
     #[test]
     fn err_in_works() {
-    	let keys = [VBIN_ERROR, ERR_RET_NOT_FOUND, 2, // depth
-    	            1, // len
-    	            66,
-    	            1, // len
-    	            77
-    	            ];
+    	logging_test_set(LOG_LEVEL_DEBUG);
+    	let mut keys = Vec::<u8>::new();
+    	keys.push(VBIN_ERROR);
+    	keys.push(ERR_RET_NOT_FOUND);
+
+    	let key_depth:u64 = 2;
+    	let key_length:u64 = 1;
+    	let key_1:u64 = 66;
+    	let key_2:u64 = 77;
+    	keys.extend_from_slice(&key_depth.to_le_bytes());
+    	keys.extend_from_slice(&key_length.to_le_bytes());
+    	keys.extend_from_slice(&key_1.to_le_bytes());
+    	keys.extend_from_slice(&key_length.to_le_bytes());
+    	keys.extend_from_slice(&key_2.to_le_bytes());
+
     	let mut i = 0;
-    	let err_obj = FlotonErr::input_binary(&keys, &mut i).expect("Cannot parse the error from bytes");
-    	assert_eq!(i, 7);
+    	let err_obj = FlotonErr::input_binary(keys.as_slice(), &mut i).expect("Cannot parse the error from bytes");
+    	assert_eq!(i, 42);
     	match err_obj {
     		FlotonErr::ReturnNotFound(ptr) => unsafe {
     			assert_eq!(*ptr, 2);

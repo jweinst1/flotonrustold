@@ -17,13 +17,13 @@ use std::io::prelude::*;
 fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
     let mut key_ptr = unsafe { cmd.as_ptr().offset(*place as isize) as *const u64 };
 	let key_depth = unsafe { *key_ptr };
-    key_ptr = key_ptr.offset(1);
+    key_ptr = unsafe { key_ptr.offset(1) };
 	*place += 8;
 	let mut cur_map = data;
 	let mut not_found = false;
 	for _ in 0..key_depth {
 		let key_len = (unsafe { *key_ptr }) as usize; // todo align error
-        key_ptr = key_ptr.offset(1);
+        key_ptr = unsafe { key_ptr.offset(1) };
 		*place += 8;
 		if !not_found {
 			match (*cur_map).get_map(&cmd[*place..(*place + key_len)]) {
@@ -34,7 +34,7 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 				}
 			}
 		}
-        key_ptr = key_ptr.offset(key_len / 8);
+        key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
 		*place += key_len;
 	}
 	if !not_found  { 
@@ -46,25 +46,25 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 }
 
 fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) -> Result<(), FlotonErr> {
-    let mut _key_ptr = unsafe { cmd.as_ptr().offset(*place as isize) as *const u64 };
+    let mut key_ptr = unsafe { cmd.as_ptr().offset(*place as isize) as *const u64 };
     let key_depth = unsafe { *key_ptr };
-    key_ptr = key_ptr.offset(1);
+    key_ptr = unsafe { key_ptr.offset(1) };
     *place += 8;
 	let mut cur_map = data;
 	for _ in 0..(key_depth-1) {
         let key_len = (unsafe { *key_ptr }) as usize;
-        key_ptr = key_ptr.offset(1);
+        key_ptr = unsafe { key_ptr.offset(1) };
         *place += 8;
 		cur_map = (*cur_map).create_set_map(&cmd[*place..(*place + key_len)], 30 /*todo make specify*/);
-        key_ptr = key_ptr.offset(key_len / 8);
+        key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
 		*place += key_len;
 	}
 	let key_len = (unsafe { *key_ptr }) as usize; 
 	*place += 8;
-    key_ptr = key_ptr.offset(1);
+    key_ptr = unsafe { key_ptr.offset(1) };
 	let harvested_key = &cmd[*place..(*place + key_len)];
 	*place += key_len;
-    key_ptr = key_ptr.offset(key_len / 8);
+    key_ptr = unsafe { key_ptr.offset( (key_len / 8) as isize) };
     match Container::input_binary(cmd, place) {
         Ok(hval) => Ok((*cur_map).set_map(harvested_key, hval)),
         Err(e) => Err(e)

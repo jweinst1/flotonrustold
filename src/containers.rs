@@ -32,7 +32,7 @@ fn hash_tree_cont_output_binary<T: InPutOutPut + Debug>(tree:&HashTree<Shared<Co
                                 // only u64 aligned keys are supported
                                 let len_u64 = ikey.len() as u64;
                                 output.extend_from_slice(&len_u64.to_le_bytes());
-                                output.extend_from_slice(ikey.deref())
+                                output.extend_from_slice(ikey.deref());
                                 current_val.as_ref().unwrap().0.output_binary(output);
                             }
                             // also add collided key-value pairs
@@ -175,7 +175,11 @@ mod tests {
     fn set_map_works() {
     	tlocal::set_epoch();
         let map = Container::new_map(20);
-        let key = b"test";
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key = aligned.1;
         let val = Container::Val(TestType(10));
         map.set_map(key, val);
         match map {
@@ -194,7 +198,11 @@ mod tests {
     fn get_map_shared_works() {
         tlocal::set_epoch();
         let map = Container::new_map(20);
-        let key = b"test";
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key = aligned.1;
         let val = Container::Val(TestType(10));
         map.set_map(key, val);
         match map.get_map_shared(key) { Some(rsh) => unsafe {  
@@ -211,7 +219,11 @@ mod tests {
     fn get_map_works() {
         tlocal::set_epoch();
         let map = Container::new_map(20);
-        let key = b"test";
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key = aligned.1;
         let val = Container::Val(TestType(10));
         map.set_map(key, val);
         match map.get_map(key) {
@@ -224,8 +236,16 @@ mod tests {
     fn create_set_map_works() {
         tlocal::set_epoch();
         let map = Container::new_map(20);
-        let key = b"test";
-        let key2 = b"test2";
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key = aligned.1;
+        let data2:[u64;4] = [5456, 3232, 7176, 41433];
+        let aligned2 = unsafe { data2.align_to::<u8>() };
+        assert_eq!(aligned2.0.len(), 0);
+        assert_eq!(aligned2.2.len(), 0);
+        let key2 = aligned2.1;
         let val = Container::Val(TestType(10));
         let created = map.create_set_map(key, 30);
         match created {
@@ -270,50 +290,86 @@ mod tests {
     #[test]
     fn tdata_container_output() {
         tlocal::set_epoch();
-        let key1 = [11, 22, 33];
-        let key2 = [11, 33, 44];
+        logging_test_set(LOG_LEVEL_DEBUG);
+
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key1 = aligned.1;
+        let data2:[u64;4] = [5456, 3232, 7176, 41433];
+        let aligned2 = unsafe { data2.align_to::<u8>() };
+        assert_eq!(aligned2.0.len(), 0);
+        assert_eq!(aligned2.2.len(), 0);
+        let key2 = aligned2.1;
+
         let map = Container::new_map(10);
         map.set_map(&key1, Container::Val(TestData::A));
         map.set_map(&key2, Container::Val(TestData::A));
         let mut out_vec = vec![]; 
         map.output_binary(&mut out_vec);
-        assert_eq!(out_vec.len(), 14);
+        log_debug!(TESTtdata_container_output, "Output is {:?}", out_vec);
+        assert_eq!(out_vec.len(), 86);
+
+        let out_ptr = out_vec.as_ptr();
         assert_eq!(out_vec[0], VBIN_CMAP_BEGIN);
         assert_eq!(out_vec[1], CMAPB_KEY);
-        assert_eq!(out_vec[2], 3);
-        assert_eq!(out_vec[6], TEST_DATA_A);
-        assert_eq!(out_vec[7], CMAPB_KEY);
-        assert_eq!(out_vec[8], 3);
-        assert_eq!(out_vec[12], TEST_DATA_A);
-        assert_eq!(out_vec[13], VBIN_CMAP_END);
+        unsafe { assert_eq!(*(out_ptr.offset(2) as *const u64), 32); }
+        assert_eq!(out_vec[42], TEST_DATA_A);
+        assert_eq!(out_vec[43], CMAPB_KEY);
+        unsafe { assert_eq!(*(out_ptr.offset(44) as *const u64), 32); }
+        assert_eq!(out_vec[84], TEST_DATA_A);
+        assert_eq!(out_vec[85], VBIN_CMAP_END);
     }
 
     #[test]
     fn tdata_overwrite_output() {
         tlocal::set_epoch();
-        let key1 = [11, 22, 33];
-        let key2 = [11, 22, 33];
+        logging_test_set(LOG_LEVEL_DEBUG);
+
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key1 = aligned.1;
+        let data2:[u64;4] = [556, 332, 776, 4433];
+        let aligned2 = unsafe { data2.align_to::<u8>() };
+        assert_eq!(aligned2.0.len(), 0);
+        assert_eq!(aligned2.2.len(), 0);
+        let key2 = aligned2.1;
+
         let map = Container::new_map(10);
         map.set_map(&key1, Container::Val(TestData::A));
         map.set_map(&key2, Container::Val(TestData::B));
         let mut out_vec = vec![]; 
         map.output_binary(&mut out_vec);
-        assert_eq!(out_vec.len(), 8);
+        log_debug!(TESTtdata_container_output, "Output is {:?}", out_vec);
+        assert_eq!(out_vec.len(), 44);
+        let out_ptr = out_vec.as_ptr();
         assert_eq!(out_vec[0], VBIN_CMAP_BEGIN);
         assert_eq!(out_vec[1], CMAPB_KEY);
-        assert_eq!(out_vec[2], 3);
-        assert_eq!(out_vec[3], 11);
-        assert_eq!(out_vec[4], 22);
-        assert_eq!(out_vec[5], 33);
-        assert_eq!(out_vec[6], TEST_DATA_B);
-        assert_eq!(out_vec[7], VBIN_CMAP_END);
+        unsafe { assert_eq!(*(out_ptr.offset(2) as *const u64), 32); }
+        unsafe { assert_eq!(*(out_ptr.offset(10) as *const u64), 556); }
+        unsafe { assert_eq!(*(out_ptr.offset(18) as *const u64), 332); }
+        unsafe { assert_eq!(*(out_ptr.offset(26) as *const u64), 776); }
+        unsafe { assert_eq!(*(out_ptr.offset(34) as *const u64), 4433); }
+        assert_eq!(out_vec[42], TEST_DATA_B);
+        assert_eq!(out_vec[43], VBIN_CMAP_END);
     }
 
     #[test]
-    fn tdata_container_input() {
+    fn tdata_container_input() { // current
         tlocal::set_epoch();
-        let key1 = [66, 77];
-        let key2 = [128, 77];
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key1 = aligned.1;
+        let data2:[u64;4] = [5456, 3232, 7176, 41433];
+        let aligned2 = unsafe { data2.align_to::<u8>() };
+        assert_eq!(aligned2.0.len(), 0);
+        assert_eq!(aligned2.2.len(), 0);
+        let key2 = aligned2.1;
         let input_bytes = [VBIN_CMAP_BEGIN, 
                            CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B, 
                            CMAPB_KEY, 2, key2[0], key2[1], TEST_DATA_A, 
@@ -347,7 +403,13 @@ mod tests {
     #[test]
     fn tdata_overwrite_input() {
         tlocal::set_epoch();
-        let key1 = [128, 77];
+
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key1 = aligned.1;
+
         let input_bytes = [VBIN_CMAP_BEGIN, 
                            CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B, 
                            CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_A, 
@@ -370,8 +432,18 @@ mod tests {
     #[test]
     fn nested_input() {
         tlocal::set_epoch();
-        let key1 = [200, 53];
-        let key2 = [100, 40];
+
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key1 = aligned.1;
+        let data2:[u64;4] = [5456, 3232, 7176, 41433];
+        let aligned2 = unsafe { data2.align_to::<u8>() };
+        assert_eq!(aligned2.0.len(), 0);
+        assert_eq!(aligned2.2.len(), 0);
+        let key2 = aligned2.1;
+
         let input_bytes = [VBIN_CMAP_BEGIN,
                            CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_A,
                            CMAPB_KEY, 2, key2[0], key2[1], VBIN_CMAP_BEGIN,
@@ -413,7 +485,13 @@ mod tests {
     #[test]
     fn nested_output() {
         tlocal::set_epoch();
-        let key1 = [11, 22, 33];
+
+        let data:[u64;4] = [556, 332, 776, 4433];
+        let aligned = unsafe { data.align_to::<u8>() };
+        assert_eq!(aligned.0.len(), 0);
+        assert_eq!(aligned.2.len(), 0);
+        let key1 = aligned.1;
+
         let map = Container::new_map(10);
         let nmap = Container::new_map(10);
         nmap.set_map(&key1, Container::Val(TestData::A));
