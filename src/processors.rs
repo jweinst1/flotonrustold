@@ -201,22 +201,24 @@ mod tests {
     	// set cmd
     	let mut cmd_s_buf = Vec::<u8>::new();
     	cmd_s_buf.push(constants::CMD_SET_KV);
-    	cmd_s_buf.push(2); // key depth
-    	cmd_s_buf.push(5); // key len
-    	write!(cmd_s_buf, "hello").expect("NO WRITE");
-    	cmd_s_buf.push(5); // key len
-    	write!(cmd_s_buf, "hello").expect("NO WRITE");
+        let input_key_depth:u64 = 2; // depth
+        let input_key_len:u64 = 16; // len in bytes
+        cmd_s_buf.extend_from_slice(&input_key_depth.to_le_bytes());
+        cmd_s_buf.extend_from_slice(&input_key_len.to_le_bytes());
+    	write!(cmd_s_buf, "1234567_1234567_").expect("NO WRITE");
+    	cmd_s_buf.extend_from_slice(&input_key_len.to_le_bytes()); // key len
+    	write!(cmd_s_buf, "1234567_1234567_").expect("NO WRITE");
     	cmd_s_buf.push(constants::VBIN_BOOL); // v type
     	cmd_s_buf.push(1); // v value
 
     	let mut out_buf = Vec::<u8>::new();
     	// ret cmd
     	cmd_s_buf.push(constants::CMD_RETURN_KV); // cmd ret code
-    	cmd_s_buf.push(2); // key depth
-    	cmd_s_buf.push(5); // key len
-    	write!(cmd_s_buf, "hello").expect("NO WRITE");
-    	cmd_s_buf.push(5); // key len
-    	write!(cmd_s_buf, "hello").expect("NO WRITE");
+        cmd_s_buf.extend_from_slice(&input_key_depth.to_le_bytes());
+        cmd_s_buf.extend_from_slice(&input_key_len.to_le_bytes());
+    	write!(cmd_s_buf, "1234567_1234567_").expect("NO WRITE");
+    	cmd_s_buf.extend_from_slice(&input_key_len.to_le_bytes()); // key len
+    	write!(cmd_s_buf, "1234567_1234567_").expect("NO WRITE");
     	cmd_s_buf.push(constants::CMD_STOP); // stop ops
     	run_cmd(cmd_s_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
@@ -224,17 +226,34 @@ mod tests {
     }
 
     #[test]
-    fn setkv_map_works() {
+    fn setkv_map_works() { 
         tlocal::set_epoch();
         let cont = Container::<Value>::new_map(10);
-        let key1 = [33, 55];
-        let keym = [22, 121];
-        let cmds = [constants::CMD_SET_KV, 1, 2, key1[0], key1[1], 
-                    constants::VBIN_CMAP_BEGIN,
-                    constants::CMAPB_KEY, 2, keym[0], keym[1], constants::VBIN_BOOL, 1,
-                    constants::VBIN_CMAP_END,
-                    constants::CMD_RETURN_KV, 2, 2, key1[0], key1[1], 2, keym[0], keym[1],
-                    constants::CMD_STOP];
+        let mut cmds = Vec::<u8>::new();
+        let key1 = [90, 55, 44, 22, 90, 55, 33, 22];
+        let keym = [22, 55, 33, 76, 54, 22, 12, 98];
+        let key_depth_one:u64 = 1;
+        let key_depth_two:u64 = 2;
+        let key_length:u64 = 8;
+        cmds.push(constants::CMD_SET_KV);
+        cmds.extend_from_slice(&key_depth_one.to_le_bytes());
+        cmds.extend_from_slice(&key_length.to_le_bytes());
+        cmds.extend_from_slice(&key1);
+        cmds.push(constants::VBIN_CMAP_BEGIN);
+        cmds.push(constants::CMAPB_KEY);
+        cmds.extend_from_slice(&key_length.to_le_bytes());
+        cmds.extend_from_slice(&keym);
+        cmds.push(constants::VBIN_BOOL);
+        cmds.push(1);
+        cmds.push(constants::VBIN_CMAP_END);
+        cmds.push(constants::CMD_RETURN_KV);
+        cmds.extend_from_slice(&key_depth_two.to_le_bytes());
+        cmds.extend_from_slice(&key_length.to_le_bytes());
+        cmds.extend_from_slice(&key1);
+        cmds.extend_from_slice(&key_length.to_le_bytes());
+        cmds.extend_from_slice(&keym);       
+        cmds.push(constants::CMD_STOP);
+
         let mut out_buf = Vec::<u8>::new();
         run_cmd(&cmds, &cont, &mut out_buf);
         assert_eq!(out_buf[0], constants::VBIN_BOOL);
@@ -242,7 +261,7 @@ mod tests {
     }
 
     #[test]
-    fn ret_not_found_works() {
+    fn ret_not_found_works() { // current
         tlocal::set_epoch();
         let cont = Container::<Value>::new_map(10);
         let key1 = [33, 55];
