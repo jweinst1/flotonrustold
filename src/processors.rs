@@ -115,18 +115,22 @@ mod tests {
 
     #[test]
     fn returnkv_works() {
+        logging_test_set(LOG_LEVEL_DEBUG);
+
     	let mut cmd_buf = Vec::<u8>::new();
     	let mut out_buf = Vec::<u8>::new();
     	let mut key_buf = Vec::<u8>::new();
     	cmd_buf.push(constants::CMD_RETURN_KV); // cmd code
-    	cmd_buf.push(1); // key depth
-    	cmd_buf.push(5); // key len
-    	write!(cmd_buf, "hello").expect("NO WRITE");
+        let input_key_depth:u64 = 1;
+        let input_key_len:u64 = 16;
+        cmd_buf.extend_from_slice(&input_key_depth.to_le_bytes());
+        cmd_buf.extend_from_slice(&input_key_len.to_le_bytes());
+    	write!(cmd_buf, "1234567_1234567_").expect("NO WRITE");
     	cmd_buf.push(constants::CMD_STOP); // stop ops
-    	write!(key_buf, "hello").expect("NO WRITE");
+    	write!(key_buf, "1234567_1234567_").expect("NO WRITE");
     	tlocal::set_epoch();
     	let val = Value::Bool(false);
-    	let cont = Container::<Value>::new_map(50);
+    	let cont = Container::<Value>::new_map(14);
     	cont.set_map(key_buf.as_slice(), Container::Val(val));
     	run_cmd(cmd_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
@@ -135,17 +139,20 @@ mod tests {
 
     #[test]
     fn returnkv_nested_works() {
+        logging_test_set(LOG_LEVEL_DEBUG);
     	let mut cmd_buf = Vec::<u8>::new();
     	let mut out_buf = Vec::<u8>::new();
     	let mut key_buf = Vec::<u8>::new();
     	cmd_buf.push(constants::CMD_RETURN_KV); // cmd code
-    	cmd_buf.push(2); // key depth
-    	cmd_buf.push(5); // key len
-    	write!(cmd_buf, "hello").expect("NO WRITE");
-    	cmd_buf.push(5); // key len
-    	write!(cmd_buf, "hello").expect("NO WRITE");
+        let input_key_depth:u64 = 2;
+        let input_key_len:u64 = 16;
+        cmd_buf.extend_from_slice(&input_key_depth.to_le_bytes());
+        cmd_buf.extend_from_slice(&input_key_len.to_le_bytes());
+        write!(cmd_buf, "1234567_1234567_").expect("NO WRITE");
+    	cmd_buf.extend_from_slice(&input_key_len.to_le_bytes());
+    	write!(cmd_buf, "1234567_1234567_").expect("NO WRITE");
     	cmd_buf.push(constants::CMD_STOP); // stop ops
-    	write!(key_buf, "hello").expect("NO WRITE");
+    	write!(key_buf, "1234567_1234567_").expect("NO WRITE");
 
     	tlocal::set_epoch();
     	let val = Value::Bool(false);
@@ -153,30 +160,34 @@ mod tests {
     	cont_inner.set_map(key_buf.as_slice(), Container::Val(val));
     	let cont = Container::<Value>::new_map(10);
     	cont.set_map(key_buf.as_slice(), cont_inner);
+        log_debug!(TESTreturnkv_nested_works, "cmd map test: {:?}", cont);
+
     	run_cmd(cmd_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
     	assert_eq!(out_buf[1], 0);
     }
 
     #[test]
-    fn setkv_works() {
+    fn setkv_works() { // current
     	tlocal::set_epoch();
-    	let cont = Container::<Value>::new_map(50);
+    	let cont = Container::<Value>::new_map(10);
     	// set cmd
     	let mut cmd_s_buf = Vec::<u8>::new();
     	cmd_s_buf.push(constants::CMD_SET_KV);
-    	cmd_s_buf.push(1); // key depth
-    	cmd_s_buf.push(5); // key len
-    	write!(cmd_s_buf, "hello").expect("NO WRITE");
+        let input_key_depth:u64 = 1;
+        let input_key_len:u64 = 16;
+        cmd_s_buf.extend_from_slice(&input_key_depth.to_le_bytes());
+        cmd_s_buf.extend_from_slice(&input_key_len.to_le_bytes());
+    	write!(cmd_s_buf, "1234567_1234567_").expect("NO WRITE");
     	cmd_s_buf.push(constants::VBIN_BOOL); // v type
     	cmd_s_buf.push(1); // v value
 
     	let mut out_buf = Vec::<u8>::new();
     	// ret cmd
     	cmd_s_buf.push(constants::CMD_RETURN_KV); // cmd ret code
-    	cmd_s_buf.push(1); // key depth
-    	cmd_s_buf.push(5); // key len
-    	write!(cmd_s_buf, "hello").expect("NO WRITE");
+        cmd_s_buf.extend_from_slice(&input_key_depth.to_le_bytes());
+        cmd_s_buf.extend_from_slice(&input_key_len.to_le_bytes());
+    	write!(cmd_s_buf, "1234567_1234567_").expect("NO WRITE");
     	cmd_s_buf.push(constants::CMD_STOP); // stop ops
     	run_cmd(cmd_s_buf.as_slice(), &cont, &mut out_buf);
     	assert_eq!(out_buf[0], constants::VBIN_BOOL);
