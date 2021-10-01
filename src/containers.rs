@@ -85,7 +85,7 @@ impl<T: InPutOutPut + Debug> InPutOutPut for Container<T> {
                         Err(e) => return Err(e)
                     }
                 } else {
-                    log_error!(Input, "Invalid byte for container: {}", input[*place]);
+                    log_error!(Input, "Invalid byte for container: {}, place: {}", input[*place], *place);
                     return Err(FlotonErr::UnexpectedByte(input[*place]));
                 }
             }
@@ -358,8 +358,10 @@ mod tests {
     }
 
     #[test]
-    fn tdata_container_input() { // current
+    fn tdata_container_input() { 
         tlocal::set_epoch();
+        logging_test_set(LOG_LEVEL_DEBUG);
+
         let data:[u64;4] = [556, 332, 776, 4433];
         let aligned = unsafe { data.align_to::<u8>() };
         assert_eq!(aligned.0.len(), 0);
@@ -370,13 +372,24 @@ mod tests {
         assert_eq!(aligned2.0.len(), 0);
         assert_eq!(aligned2.2.len(), 0);
         let key2 = aligned2.1;
-        let input_bytes = [VBIN_CMAP_BEGIN, 
-                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B, 
-                           CMAPB_KEY, 2, key2[0], key2[1], TEST_DATA_A, 
-                           VBIN_CMAP_END];
+
+        let mut input_bytes = Vec::<u8>::new();
+        let input_key_len:u64 = 32;
+        input_bytes.push(VBIN_CMAP_BEGIN);
+        input_bytes.push(CMAPB_KEY);
+        input_bytes.extend_from_slice(&input_key_len.to_le_bytes());
+        input_bytes.extend_from_slice(key1);
+        input_bytes.push(TEST_DATA_B);
+        input_bytes.push(CMAPB_KEY);
+        input_bytes.extend_from_slice(&input_key_len.to_le_bytes());
+        input_bytes.extend_from_slice(key2);
+        input_bytes.push(TEST_DATA_A);
+        input_bytes.push(VBIN_CMAP_END);
+        log_debug!(TESTtdata_container_input, "Test input: {:?}", input_bytes);
+
         let mut i = 0;
         let parsed_map = Container::input_binary(&input_bytes, &mut i).expect("Cannot parse map from bytes");
-        assert_eq!(i, 12);
+        assert_eq!(i, 86);
         match parsed_map.get_map(&key1) {
             Some(contref) => match contref {
                 Container::Val(v) => match v {
@@ -401,8 +414,9 @@ mod tests {
     }
 
     #[test]
-    fn tdata_overwrite_input() {
+    fn tdata_overwrite_input() { 
         tlocal::set_epoch();
+        logging_test_set(LOG_LEVEL_DEBUG);
 
         let data:[u64;4] = [556, 332, 776, 4433];
         let aligned = unsafe { data.align_to::<u8>() };
@@ -410,13 +424,23 @@ mod tests {
         assert_eq!(aligned.2.len(), 0);
         let key1 = aligned.1;
 
-        let input_bytes = [VBIN_CMAP_BEGIN, 
-                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B, 
-                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_A, 
-                           VBIN_CMAP_END];
+        let mut input_bytes = Vec::<u8>::new();
+        let input_key_len:u64 = 32;
+        input_bytes.push(VBIN_CMAP_BEGIN);
+        input_bytes.push(CMAPB_KEY);
+        input_bytes.extend_from_slice(&input_key_len.to_le_bytes());
+        input_bytes.extend_from_slice(key1);
+        input_bytes.push(TEST_DATA_B);
+        input_bytes.push(CMAPB_KEY);
+        input_bytes.extend_from_slice(&input_key_len.to_le_bytes());
+        input_bytes.extend_from_slice(key1);
+        input_bytes.push(TEST_DATA_A);
+        input_bytes.push(VBIN_CMAP_END);
+        log_debug!(TESTtdata_overwrite_input, "Test input: {:?}", input_bytes);
+
         let mut i = 0;
         let parsed_map = Container::input_binary(&input_bytes, &mut i).expect("Cannot parse map from bytes");
-        assert_eq!(i, 12);
+        assert_eq!(i, 86);
         match parsed_map.get_map(&key1) {
             Some(contref) => match contref {
                 Container::Val(v) => match v {
@@ -430,8 +454,9 @@ mod tests {
     }
 
     #[test]
-    fn nested_input() {
+    fn nested_input() { 
         tlocal::set_epoch();
+        logging_test_set(LOG_LEVEL_DEBUG);
 
         let data:[u64;4] = [556, 332, 776, 4433];
         let aligned = unsafe { data.align_to::<u8>() };
@@ -444,15 +469,28 @@ mod tests {
         assert_eq!(aligned2.2.len(), 0);
         let key2 = aligned2.1;
 
-        let input_bytes = [VBIN_CMAP_BEGIN,
-                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_A,
-                           CMAPB_KEY, 2, key2[0], key2[1], VBIN_CMAP_BEGIN,
-                                                           CMAPB_KEY, 2, key1[0], key1[1], TEST_DATA_B,
-                                                           VBIN_CMAP_END,
-                           VBIN_CMAP_END];
+        let mut input_bytes = Vec::<u8>::new();
+        let input_key_len:u64 = 32;
+        input_bytes.push(VBIN_CMAP_BEGIN);
+        input_bytes.push(CMAPB_KEY);
+        input_bytes.extend_from_slice(&input_key_len.to_le_bytes());
+        input_bytes.extend_from_slice(key1);
+        input_bytes.push(TEST_DATA_A);
+        input_bytes.push(CMAPB_KEY);
+        input_bytes.extend_from_slice(&input_key_len.to_le_bytes());
+        input_bytes.extend_from_slice(key2);
+        input_bytes.push(VBIN_CMAP_BEGIN);
+        input_bytes.push(CMAPB_KEY);
+        input_bytes.extend_from_slice(&input_key_len.to_le_bytes());
+        input_bytes.extend_from_slice(key1);
+        input_bytes.push(TEST_DATA_B);
+        input_bytes.push(VBIN_CMAP_END);
+        input_bytes.push(VBIN_CMAP_END);
+        log_debug!(TESTnested_input, "Test input: {:?}", input_bytes);
+
         let mut i = 0;
         let parsed_map = Container::input_binary(&input_bytes, &mut i).expect("Cannot parse map from bytes");
-        assert_eq!(i, 18);
+        assert_eq!(129, i);
         match parsed_map.get_map(&key1) {
             Some(contref) => match contref {
                 Container::Val(v) => match v {
@@ -483,8 +521,9 @@ mod tests {
     }
 
     #[test]
-    fn nested_output() {
+    fn nested_output() { 
         tlocal::set_epoch();
+        logging_test_set(LOG_LEVEL_DEBUG);
 
         let data:[u64;4] = [556, 332, 776, 4433];
         let aligned = unsafe { data.align_to::<u8>() };
@@ -496,23 +535,30 @@ mod tests {
         let nmap = Container::new_map(10);
         nmap.set_map(&key1, Container::Val(TestData::A));
         map.set_map(&key1, nmap);
+        log_debug!(TESTnested_output, "test map: {:?}", map);
         let mut out_vec = vec![]; 
         map.output_binary(&mut out_vec);
-        assert_eq!(out_vec.len(), 15);
+        log_debug!(TESTnested_output, "Test output: {:?}", out_vec);
+
+        let out_ptr = out_vec.as_ptr();
+
+        assert_eq!(out_vec.len(), 87);
         assert_eq!(out_vec[0], VBIN_CMAP_BEGIN);
         assert_eq!(out_vec[1], CMAPB_KEY);
-        assert_eq!(out_vec[2], 3);
-        assert_eq!(out_vec[3], 11);
-        assert_eq!(out_vec[4], 22);
-        assert_eq!(out_vec[5], 33);
-        assert_eq!(out_vec[6], VBIN_CMAP_BEGIN);
-        assert_eq!(out_vec[7], CMAPB_KEY);
-        assert_eq!(out_vec[8], 3);
-        assert_eq!(out_vec[9], 11);
-        assert_eq!(out_vec[10], 22);
-        assert_eq!(out_vec[11], 33);
-        assert_eq!(out_vec[12], TEST_DATA_A);
-        assert_eq!(out_vec[13], VBIN_CMAP_END);
-        assert_eq!(out_vec[14], VBIN_CMAP_END);
+        unsafe { assert_eq!(*(out_ptr.offset(2) as *const u64), 32); }
+        unsafe { assert_eq!(*(out_ptr.offset(10) as *const u64), 556); }
+        unsafe { assert_eq!(*(out_ptr.offset(18) as *const u64), 332); }
+        unsafe { assert_eq!(*(out_ptr.offset(26) as *const u64), 776); }
+        unsafe { assert_eq!(*(out_ptr.offset(34) as *const u64), 4433); }
+        assert_eq!(out_vec[42], VBIN_CMAP_BEGIN);
+        assert_eq!(out_vec[43], CMAPB_KEY);
+        unsafe { assert_eq!(*(out_ptr.offset(44) as *const u64), 32); }
+        unsafe { assert_eq!(*(out_ptr.offset(52) as *const u64), 556); }
+        unsafe { assert_eq!(*(out_ptr.offset(60) as *const u64), 332); }
+        unsafe { assert_eq!(*(out_ptr.offset(68) as *const u64), 776); }
+        unsafe { assert_eq!(*(out_ptr.offset(76) as *const u64), 4433); }
+        assert_eq!(out_vec[84], TEST_DATA_A);
+        assert_eq!(out_vec[85], VBIN_CMAP_END);
+        assert_eq!(out_vec[86], VBIN_CMAP_END);
     }
 }

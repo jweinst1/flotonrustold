@@ -4,6 +4,7 @@ use std::fmt::Debug;
 use std::ops::Deref;
 use crate::tlocal;
 use crate::traits::NewType;
+use crate::logging::*;
 
 static DEFAULT_HASH_BASE:u64 = 0x5331;
 
@@ -22,13 +23,10 @@ impl HashScheme {
 			},
 			8 => {
 				let mut base = self.0;
-				let aligned = unsafe { data.align_to::<u64>() };
-				// Asssert on perfect alignment
-				debug_assert!(aligned.0.len() == 0);
-				debug_assert!(aligned.2.len() == 0);
-				let aligned_data = aligned.1;
-				for i in 0..aligned_data.len() {
-					base = ((base << 29) | (base >> 29)) ^ aligned_data[i];
+
+				let ptr = data.as_ptr() as *const u64;
+				for i in 0..(data.len() / 8) {
+					base = ((base << 29) | (base >> 29)) ^ (unsafe { *ptr.offset(i as isize) });
 				}
 				base
 			},
@@ -77,10 +75,20 @@ fn compare_aligned(lfs:&[u8], rfs:&[u8], align:usize) -> bool {
 	match align {
 		1 => lfs == rfs,
 		8 => {
-			let aligned_lfs = unsafe { lfs.align_to::<u64>() };
-			let aligned_rfs = unsafe { rfs.align_to::<u64>() };
-			debug_assert!(aligned_lfs.0.len() == 0  && aligned_lfs.2.len() == 0 && aligned_rfs.0.len() == 0  && aligned_rfs.2.len() == 0);
-			aligned_lfs.1 == aligned_rfs.1
+			if lfs.len() != rfs.len() {
+				return false;
+			} else {
+				let mut lptr = lfs.as_ptr();
+				let mut rptr = rfs.as_ptr();
+				for i in 0..lfs.len() {
+					unsafe {
+						if *lptr.offset(i as isize) != *rptr.offset(i as isize) {
+							return false;
+						}
+					}
+				}
+				return true;
+			}
 		}
 		_ => panic!("Unsupported alignment for compare_aligned: {:?}", align)
 	}
