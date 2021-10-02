@@ -16,6 +16,7 @@ use std::io::prelude::*;
 
 fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
     let mut key_ptr = unsafe { cmd.as_ptr().offset(*place as isize) as *const u64 };
+    let key_orig = key_ptr;
 	let key_depth = unsafe { *key_ptr };
     key_ptr = unsafe { key_ptr.offset(1) };
 	*place += 8;
@@ -41,7 +42,7 @@ fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output
 		(*cur_map).output_binary(output);
         Ok(()) 
 	} else {
-        Err(FlotonErr::ReturnNotFound(key_ptr))
+        Err(FlotonErr::ReturnNotFound(key_orig))
     }
 }
 
@@ -263,22 +264,36 @@ mod tests {
     #[test]
     fn ret_not_found_works() { // current
         tlocal::set_epoch();
+        logging_test_set(LOG_LEVEL_DEBUG);
+
         let cont = Container::<Value>::new_map(10);
-        let key1 = [33, 55];
-        let keym = [22, 121];
-        let cmds = [constants::CMD_RETURN_KV, 2, 2, key1[0], key1[1], 2, keym[0], keym[1],
-                    constants::CMD_STOP];
+        let key1 = [90, 55, 44, 22, 90, 55, 33, 22];
+        let keym = [22, 55, 33, 76, 54, 22, 12, 98];
+        let key1_n = u64::from_le_bytes(key1);
+        let keym_n = u64::from_le_bytes(keym);
+        let key_depth_two:u64 = 2;
+        let key_length:u64 = 8;
+        let mut cmds = Vec::<u8>::new();
+        cmds.push(constants::CMD_RETURN_KV);
+        cmds.extend_from_slice(&key_depth_two.to_le_bytes());
+        cmds.extend_from_slice(&key_length.to_le_bytes());
+        cmds.extend_from_slice(&key1);
+        cmds.extend_from_slice(&key_length.to_le_bytes());
+        cmds.extend_from_slice(&keym);
+        cmds.push(constants::CMD_STOP);
+        log_debug!(TESTret_not_found_works, "cmds buf {:?}", cmds);
+
         let mut out_buf = Vec::<u8>::new();
         run_cmd(&cmds, &cont, &mut out_buf);
-        assert_eq!(out_buf.len(), 9);
+        log_debug!(TESTret_not_found_works, "out buf: {:?}", out_buf);
+        let out_ptr = out_buf.as_ptr();
+        assert_eq!(out_buf.len(), 42);
         assert_eq!(out_buf[0], constants::VBIN_ERROR);
         assert_eq!(out_buf[1], constants::ERR_RET_NOT_FOUND);
-        assert_eq!(out_buf[2], 2);
-        assert_eq!(out_buf[3], 2);
-        assert_eq!(out_buf[4], key1[0]);
-        assert_eq!(out_buf[5], key1[1]);
-        assert_eq!(out_buf[6], 2);
-        assert_eq!(out_buf[7], keym[0]);
-        assert_eq!(out_buf[8], keym[1]);
+        unsafe { assert_eq!(*(out_ptr.offset(2) as *const u64), 2); } // depth
+        unsafe { assert_eq!(*(out_ptr.offset(10) as *const u64), 8); } // len
+        unsafe { assert_eq!(*(out_ptr.offset(18) as *const u64), key1_n); }
+        unsafe { assert_eq!(*(out_ptr.offset(26) as *const u64), 8); }
+        unsafe { assert_eq!(*(out_ptr.offset(34) as *const u64), keym_n); }
     }
 }

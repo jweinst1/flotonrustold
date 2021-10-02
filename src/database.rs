@@ -136,7 +136,7 @@ mod tests {
 
     #[test]
     fn basic_set_get_works() {
-    	logging_test_set(LOG_LEVEL_TRACE);
+    	logging_test_set(LOG_LEVEL_DEBUG);
     	tlocal::set_epoch();
     	let mut resp_header:[u8;8] = [0;8];
         let key1 = [33, 55];

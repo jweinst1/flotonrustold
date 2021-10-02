@@ -31,8 +31,8 @@ impl InPutOutPut for FlotonErr {
 						let key_len = *key_ptr;
 						output.extend_from_slice(&key_len.to_le_bytes());
 						key_ptr = key_ptr.offset(1 as isize);
-						unsafe { output.extend_from_slice(slice::from_raw_parts(key_ptr, key_len as usize).align_to::<u8>().1); }
-						key_ptr = key_ptr.offset(key_len as isize);
+						unsafe { output.extend_from_slice(slice::from_raw_parts(key_ptr as *const u8, key_len as usize)); }
+						key_ptr = key_ptr.offset((key_len / 8) as isize);
 					}
 				}
 			},
