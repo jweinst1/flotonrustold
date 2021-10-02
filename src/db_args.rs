@@ -11,7 +11,7 @@ pub enum ParseResult {
 // Used for parsing string argument,
 // like --foo=5
 #[derive(Debug)]
-pub struct ArgRule<'a, T>(&'a str, T);
+pub struct ArgRule<'a, T>(pub &'a str, pub T);
 
 fn check_arg_rule<T: str::FromStr>(rule:&mut ArgRule<T>, arg:&str) -> ParseResult {
 	let bytes = arg.as_bytes();
@@ -102,11 +102,18 @@ mod tests {
     #[test]
     fn check_args_works() {
     	let mut rule1 = ArgRule::<bool>("--enabled", false);
-    	let arguments = vec![String::from("--enabled"), String::from("true"), String::from("--foo")];
+    	let mut rule2 = ArgRule::<u8>("--foo", 0);
+    	let arguments = vec![String::from("--enabled"), String::from("true"), String::from("--foo=8")];
     	match check_args(&mut rule1, &arguments) {
     		ParseResult::NoMatch => panic!("Expected rule: {:?} to be parsed as true", rule1),
     		ParseResult::MatchNoArg => panic!("Unexpected result, expected rule: {:?} to be parsed as true", rule1),
     		ParseResult::Match => assert!(rule1.1)	
+    	}
+
+    	match check_args(&mut rule2, &arguments) {
+    		ParseResult::NoMatch => panic!("Expected rule: {:?} to be parsed as 8", rule2),
+    		ParseResult::MatchNoArg => panic!("Unexpected result, expected rule: {:?} to be parsed as 8", rule2),
+    		ParseResult::Match => assert_eq!(rule2.1, 8)
     	}
     }
 }
