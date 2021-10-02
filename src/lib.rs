@@ -6,6 +6,7 @@ pub mod traits;
 pub mod datetime;
 #[macro_use] pub mod logging;
 pub mod errors;
+pub mod db_args;
 pub mod signals;
 pub mod circular;
 pub mod trie;

@@ -26,3 +26,5 @@ pub const ERR_UNEXPECT_BYTE:u8 = 2;
 pub const DBSTATE_START:u8 = 0;
 pub const DBSTATE_OK:u8 = 1;
 pub const DBSTATE_SHUTTING_DOWN:u8 = 2;
+
+pub const SSEQ_U8_EQ:&'static [u8] = "=".as_bytes();
