@@ -139,21 +139,52 @@ mod tests {
     	logging_test_set(LOG_LEVEL_DEBUG);
     	tlocal::set_epoch();
     	let mut resp_header:[u8;8] = [0;8];
-        let key1 = [33, 55];
-        let set_value = [VBIN_BOOL, 1];
-        let set_key1 = [CMD_SET_KV, 1, 2, key1[0], key1[1], set_value[0], set_value[1], CMD_STOP];
-        let get_key1 = [CMD_RETURN_KV, 1, 2, key1[0], key1[1], CMD_STOP];
-        let set_key1_size:u64 =  8;
-        let get_key1_size:u64 =  6;
-        let set_sbytes = set_key1_size.to_le_bytes();
-        let get_sbytes = get_key1_size.to_le_bytes();
-        let set_cmd = [set_sbytes[0], set_sbytes[1], set_sbytes[2], set_sbytes[3], // size
-                       set_sbytes[4], set_sbytes[5], set_sbytes[6], set_sbytes[7], 
-                       set_key1[0], set_key1[1], set_key1[2], set_key1[3], set_key1[4], set_key1[5], set_key1[6], set_key1[7]];
+        let key1 = [33, 55, 44, 123, 221, 71, 81, 91];
+        let u64_val_one:u64 = 1;
+        let u64_val_8:u64 = 8;
+        let mut set_cmd = Vec::<u8>::new();
+        set_cmd.push(CMD_SET_KV);
+        set_cmd.extend_from_slice(&u64_val_one.to_le_bytes());
+        set_cmd.extend_from_slice(&u64_val_8.to_le_bytes());
+        set_cmd.extend_from_slice(&key1);
+        set_cmd.push(VBIN_BOOL);
+        set_cmd.push(1);
+        set_cmd.push(CMD_STOP);
+        let set_cmd_size = (set_cmd.len() as u64).to_le_bytes();
+        // insert size at beginning
+        for _ in 0..8 {
+        	set_cmd.insert(0, 0);
+        }
+        set_cmd[0] = set_cmd_size[0];
+        set_cmd[1] = set_cmd_size[1];
+        set_cmd[2] = set_cmd_size[2];
+        set_cmd[3] = set_cmd_size[3];
+        set_cmd[4] = set_cmd_size[4];
+        set_cmd[5] = set_cmd_size[5];
+        set_cmd[6] = set_cmd_size[6];
+        set_cmd[7] = set_cmd_size[7];
 
-        let get_cmd = [get_sbytes[0], get_sbytes[1], get_sbytes[2], get_sbytes[3], // size
-                       get_sbytes[4], get_sbytes[5], get_sbytes[6], get_sbytes[7], 
-                       get_key1[0], get_key1[1], get_key1[2], get_key1[3], get_key1[4], get_key1[5]];
+        let mut get_cmd = Vec::<u8>::new();
+        get_cmd.push(CMD_RETURN_KV);
+        get_cmd.extend_from_slice(&u64_val_one.to_le_bytes());
+        get_cmd.extend_from_slice(&u64_val_8.to_le_bytes());
+        get_cmd.extend_from_slice(&key1);
+        get_cmd.push(CMD_STOP);
+
+        let get_cmd_size = (get_cmd.len() as u64).to_le_bytes();
+        // insert size at beginning
+        for _ in 0..8 {
+        	get_cmd.insert(0, 0);
+        }
+        get_cmd[0] = get_cmd_size[0];
+        get_cmd[1] = get_cmd_size[1];
+        get_cmd[2] = get_cmd_size[2];
+        get_cmd[3] = get_cmd_size[3];
+        get_cmd[4] = get_cmd_size[4];
+        get_cmd[5] = get_cmd_size[5];
+        get_cmd[6] = get_cmd_size[6];
+        get_cmd[7] = get_cmd_size[7];
+
         let mut db = Database::new_for_testing();
         log_debug!(TESTbasic_set_get_works, "Set Req: {:?}", set_cmd);
         log_debug!(TESTbasic_set_get_works, "Get Req: {:?}", get_cmd);
@@ -178,12 +209,12 @@ mod tests {
         let mut client2 = TcpStream::connect((db.settings.serv_addr.as_str(), db.settings.db_port)).expect("Could not connect to db port and addr");
         client2.write_all(&get_cmd).expect("Could not write the get request");
         client2.read_exact(&mut resp_header).expect("Could not read back from get resp header");
-        let get_resp_size = u32::from_le_bytes(resp_header[0..4].try_into().expect("Could not get size from slice"));
+        let get_resp_size = u64::from_le_bytes(resp_header);
         assert_eq!(get_resp_size, 2);
         let mut resp_body:[u8;2] = [0;2];
         client2.read_exact(&mut resp_body);
-        assert_eq!(set_value[0], resp_body[0]);
-        assert_eq!(set_value[1], resp_body[1]);
+        assert_eq!(VBIN_BOOL, resp_body[0]);
+        assert_eq!(1, resp_body[1]);
         db.stop();
     }
 }

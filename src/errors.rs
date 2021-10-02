@@ -87,27 +87,42 @@ mod tests {
     	logging_test_set(LOG_LEVEL_DEBUG);
     	let mut keys = Vec::<u8>::new();
     	let key_depth:u64 = 2;
-    	let key_length:u64 = 1;
-    	let key_1:u64 = 66;
-    	let key_2:u64 = 77;
+    	let key_length:u64 = 8;
+    	let key_1 = [33, 55, 44, 123, 221, 71, 81, 91];
+    	let key_2 = [33, 25, 44, 223, 121, 71, 81, 91];
     	keys.extend_from_slice(&key_depth.to_le_bytes());
     	keys.extend_from_slice(&key_length.to_le_bytes());
-    	keys.extend_from_slice(&key_1.to_le_bytes());
+    	keys.extend_from_slice(&key_1);
     	keys.extend_from_slice(&key_length.to_le_bytes());
-    	keys.extend_from_slice(&key_2.to_le_bytes());
+    	keys.extend_from_slice(&key_2);
     	keys.push(3);
     	let err_obj = FlotonErr::ReturnNotFound((&keys).as_ptr() as *const u64);
     	let mut buf = vec![];
     	err_obj.output_binary(&mut buf);
     	log_debug!(TESTerr_out_works, "buf vec is {:?}", buf);
+    	let out_ptr = buf.as_ptr();
     	assert_eq!(buf.len(), 42);
     	assert_eq!(buf[0], VBIN_ERROR);
     	assert_eq!(buf[1], ERR_RET_NOT_FOUND);
-    	assert_eq!(buf[2], keys[0]);
-    	assert_eq!(buf[3], keys[1]);
-    	assert_eq!(buf[4], keys[2]);
-    	assert_eq!(buf[5], keys[3]);
-    	assert_eq!(buf[6], keys[4]);
+    	unsafe { assert_eq!(*(out_ptr.offset(2) as *const u64), 2); }
+    	unsafe { assert_eq!(*(out_ptr.offset(10) as *const u64), 8); }
+    	unsafe { assert_eq!(*(out_ptr.offset(18)), 33); }
+    	unsafe { assert_eq!(*(out_ptr.offset(19)), 55); }
+    	unsafe { assert_eq!(*(out_ptr.offset(20)), 44); }
+    	unsafe { assert_eq!(*(out_ptr.offset(21)), 123); }
+    	unsafe { assert_eq!(*(out_ptr.offset(22)), 221); }
+    	unsafe { assert_eq!(*(out_ptr.offset(23)), 71); }
+    	unsafe { assert_eq!(*(out_ptr.offset(24)), 81); }
+    	unsafe { assert_eq!(*(out_ptr.offset(25)), 91); }
+    	unsafe { assert_eq!(*(out_ptr.offset(26) as *const u64), 8); }
+    	unsafe { assert_eq!(*(out_ptr.offset(34)), 33); }
+    	unsafe { assert_eq!(*(out_ptr.offset(35)), 25); }
+    	unsafe { assert_eq!(*(out_ptr.offset(36)), 44); }
+    	unsafe { assert_eq!(*(out_ptr.offset(37)), 223); }
+    	unsafe { assert_eq!(*(out_ptr.offset(38)), 121); }
+    	unsafe { assert_eq!(*(out_ptr.offset(39)), 71); }
+    	unsafe { assert_eq!(*(out_ptr.offset(40)), 81); }
+    	unsafe { assert_eq!(*(out_ptr.offset(41)), 91); }
     }
 
     #[test]
