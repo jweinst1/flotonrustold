@@ -53,16 +53,6 @@ pub fn time() -> u64 {
 	})
 }
 
-thread_local!(static FREE_LIST_L: RefCell<u32> = RefCell::new(3));
-
-pub fn free_lim() -> u32 {
-    FREE_LIST_L.with(|x| { *x.borrow() })
-}
-
-pub fn set_free_lim(val:u32) {
-    FREE_LIST_L.with(|x| { *x.borrow_mut() = val; })
-}
-
 thread_local!(static ACTIVE_DB:RefCell<*mut Database> = RefCell::new(ptr::null_mut()));
 
 pub fn set_db(ptr:*mut Database) {
@@ -71,6 +61,34 @@ pub fn set_db(ptr:*mut Database) {
 
 pub fn get_db() -> *mut Database {
     ACTIVE_DB.with(|x| { *x.borrow() })
+}
+
+thread_local!(static FREE_LIST_L: RefCell<u32> = RefCell::new(3));
+
+#[cfg(debug_assertions)]
+pub fn get_free_lim() -> u32 {
+    let db_ptr = get_db();
+    if isnull!(db_ptr) {
+        FREE_LIST_L.with(|x| { *x.borrow() })
+    } else {
+        unsafe { get_db().as_ref().unwrap().get_free_lim() }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+pub fn get_free_lim() -> u32 {
+    unsafe { get_db().as_ref().unwrap().get_free_lim() }
+}
+
+
+#[cfg(debug_assertions)]
+pub fn set_free_lim(val:u32) {
+    FREE_LIST_L.with(|x| { *x.borrow_mut() = val; })
+}
+
+#[cfg(not(debug_assertions))]
+pub fn set_free_lim(val:u32) {
+    panic!("This function should not be called on release builds!");
 }
 
 #[cfg(test)]

@@ -147,7 +147,7 @@ impl<T> Shared<T> {
 
     pub fn free_run(&self) -> u32  {
         let flist = &self.time_keeps.get_by_tid().free_list;
-        if flist.count() < tlocal::free_lim() {
+        if flist.count() < tlocal::get_free_lim() {
             return 0;
         }
         //println!("Running free list on thread: {}", tid);

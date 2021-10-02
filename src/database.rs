@@ -66,13 +66,17 @@ impl Database {
 		resp.to_tcp_stream(&mut tstream.0);
 	}
 
-	fn new_for_testing() -> Database {
+	pub fn get_free_lim(&self) -> u32 {
+		self.settings.th_free_lim
+	}
+
+	pub fn new_for_testing() -> Database {
 		let mut opts = Settings::new();
 		opts.set_port_for_testing();
 		Database::new_from_settings(opts)
 	}
 
-	fn new_from_settings(settings:Settings) -> Database {
+	pub fn new_from_settings(settings:Settings) -> Database {
 		let slots_size = settings.db_map_slots;
 		Database{settings:settings, 
 			     data:Container::new_map(slots_size),
