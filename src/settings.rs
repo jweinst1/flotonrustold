@@ -86,4 +86,16 @@ mod tests {
     	s2.set_port_for_testing();
     	assert!(s1.db_port != s2.db_port);
     }
+
+    #[test]
+    fn from_args_works() {
+    	let mut args = vec![];
+    	args.push(String::from("--port"));
+    	args.push(String::from("8900"));
+    	args.push(String::from("--conn-threads=5"));
+    	args.push(String::from("--foobar")); // unrelated, shouldn't show as a val
+    	let settings = Settings::from_args(&args);
+    	assert_eq!(settings.db_port, 8900);
+    	assert_eq!(settings.conn_th_count, 5);
+    }
 }

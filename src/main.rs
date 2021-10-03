@@ -14,13 +14,17 @@ static THE_DATABASE:AtomicPtr<Database> = AtomicPtr::new(ptr::null_mut());
 
 fn int_handler(sig:i32) {
 	log_always!(ShutDown, "Terminating with signal {}", sig);
-	unsafe { THE_DATABASE.load(Ordering::SeqCst).as_mut().unwrap().stop(); }
+	let db_ptr = THE_DATABASE.load(Ordering::SeqCst);
+	unsafe { db_ptr.as_mut().unwrap().stop(); }
+	free!(db_ptr);
 	process::exit(0);
 }
 
 fn term_handler(sig:i32) {
 	log_always!(ShutDown, "Terminating with signal {}", sig);
-	unsafe { THE_DATABASE.load(Ordering::SeqCst).as_mut().unwrap().stop(); }
+	let db_ptr = THE_DATABASE.load(Ordering::SeqCst);
+	unsafe { db_ptr.as_mut().unwrap().stop(); }
+	free!(db_ptr);
 	process::exit(0);
 }
 
@@ -34,6 +38,7 @@ fn main() {
 
     let settings = Settings::from_args(&cli_args);
     let mut db = Database::new_from_settings(settings);
+    log_always!(Startup, "Will listen on port {} for connections", db.get_port());
     db.construct();
     db.start();
     THE_DATABASE.store(alloc!(db), Ordering::SeqCst);

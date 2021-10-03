@@ -70,6 +70,10 @@ impl Database {
 		self.settings.th_free_lim
 	}
 
+	pub fn get_port(&self) -> u16 {
+		self.settings.db_port
+	}
+
 	pub fn new_for_testing() -> Database {
 		let mut opts = Settings::new();
 		opts.set_port_for_testing();
