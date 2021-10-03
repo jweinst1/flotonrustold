@@ -63,6 +63,25 @@ pub fn get_db() -> *mut Database {
     ACTIVE_DB.with(|x| { *x.borrow() })
 }
 
+#[cfg(debug_assertions)]
+thread_local!(static MAP_SLOTS_L: RefCell<usize> = RefCell::new(20));
+
+#[cfg(debug_assertions)]
+pub fn get_map_slots() -> usize {
+    let db_ptr = get_db();
+    if isnull!(db_ptr) {
+        MAP_SLOTS_L.with(|x| { *x.borrow() })
+    } else {
+        unsafe { get_db().as_ref().unwrap().get_map_slots() }
+    }
+}
+
+#[cfg(not(debug_assertions))]
+pub fn get_map_slots() -> usize {
+    unsafe { get_db().as_ref().unwrap().get_map_slots() }
+}
+
+#[cfg(debug_assertions)]
 thread_local!(static FREE_LIST_L: RefCell<u32> = RefCell::new(3));
 
 #[cfg(debug_assertions)]

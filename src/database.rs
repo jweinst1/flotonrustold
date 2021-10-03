@@ -74,6 +74,10 @@ impl Database {
 		self.settings.db_port
 	}
 
+	pub fn get_map_slots(&self) -> usize {
+		self.settings.db_map_slots
+	}
+
 	pub fn new_for_testing() -> Database {
 		let mut opts = Settings::new();
 		opts.set_port_for_testing();

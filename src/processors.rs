@@ -56,7 +56,7 @@ fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) -> Result
         let key_len = (unsafe { *key_ptr }) as usize;
         key_ptr = unsafe { key_ptr.offset(1) };
         *place += 8;
-		cur_map = (*cur_map).create_set_map(&cmd[*place..(*place + key_len)], 30 /*todo make specify*/);
+		cur_map = (*cur_map).create_set_map(&cmd[*place..(*place + key_len)], tlocal::get_map_slots());
         key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
 		*place += key_len;
 	}
