@@ -84,7 +84,7 @@ impl Database {
 			     state:DatabaseState::new()}
 	}
 
-	fn construct(&mut self) {
+	pub fn construct(&mut self) {
 		let parker = Parker::new(self.settings.tcp_park_min, 
 			                     self.settings.tcp_park_max, 
 			                     self.settings.tcp_park_seg);
@@ -106,7 +106,7 @@ impl Database {
 		nonull!(self.server.load(Ordering::SeqCst))
 	}
 
-	fn start(&self) {
+	pub fn start(&self) {
 		if !self.is_constructed() {
 			log_fatal!(Database, "Server was attempted to be started while not being constructed!");
 			panic!("Cannot start Database");
@@ -115,7 +115,7 @@ impl Database {
 		self.state.to_ok();
 	}
 
-	fn stop(&mut self) {
+	pub fn stop(&mut self) {
 		if self.state.to_shutdown() {
 			let serv_ptr = self.server.load(Ordering::Acquire);
 			unsafe { serv_ptr.as_mut().unwrap().stop(); }

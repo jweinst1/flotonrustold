@@ -78,6 +78,17 @@ macro_rules! log_trace {
 		}
 	};
 }
+/**
+ * Intended for startup / shutdown or other info that should always be logged, regardless of the set level
+ */
+#[macro_export]
+macro_rules! log_always {
+	($component:ident, $($b:tt)+) => {
+		let mut dt = logging_make_new_date_time();
+		dt.set_to_now().expect("Could not set DateTime from gmtime");
+		println!("{} {} - {}", dt, stringify!($component), format!($($b)+));
+	};
+}
 
 // only use from unit tests
 // the real level should only be changed at global, not scope level

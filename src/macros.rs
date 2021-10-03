@@ -16,12 +16,14 @@ macro_rules! newptr {
 	() => { AtomicPtr::new(ptr::null_mut()) }
 }
 
+#[macro_export]
 macro_rules! alloc {
     ($obj:expr) => {
         Box::into_raw(Box::new($obj))
     };
 }
 
+#[macro_export]
 macro_rules! free {
     ($obj:expr) => {
         unsafe { drop(Box::from_raw($obj)); }
