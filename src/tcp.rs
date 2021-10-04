@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, AtomicPtr, Ordering};
 use std::thread;
-use std::net::{TcpListener, TcpStream, Shutdown};
+use std::net::{TcpListener, TcpStream, Shutdown, ToSocketAddrs};
 use std::time::Duration;
 use std::process::exit;
 use std::io;
@@ -145,6 +145,45 @@ impl<T: 'static> TcpServer<T> {
 	}
 }
 
+/**
+ * Does a send and receive under an u64 le size header protocol
+ */
+pub fn send_receive<T: ToSocketAddrs>(dest:T, content:&[u8]) -> Result<Vec<u8>, ()> {
+	let mut client = match TcpStream::connect(dest) {
+		Ok(c) => c,
+		Err(_) =>  return Err(())
+	};
+	let size_bytes = (content.len() as u64).to_le_bytes();
+	match client.write_all(&size_bytes) {
+		Ok(_) => (),
+		Err(_) => return Err(())
+	}
+
+	match client.write_all(content) {
+		Ok(_) => (),
+		Err(_) => return Err(())
+	}
+
+	match client.flush() {
+		Ok(_) => (),
+		Err(_) => return Err(())	
+	}
+
+	let mut size_received:[u8;8] = [0;8];
+	match client.read_exact(&mut size_received) {
+		Ok(_) => (),
+		Err(_) => return Err(())
+	}
+	let size_to_read = u64::from_le_bytes(size_received);
+	let mut resp_vec = Vec::<u8>::new();
+	resp_vec.resize(size_to_read as usize, 0);
+	match client.read_exact(resp_vec.as_mut_slice()) {
+		Ok(_) => Ok(resp_vec),
+		Err(_) => Err(())
+	}
+
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -242,5 +281,55 @@ mod tests {
         t5.join().unwrap();
         server.stop();
         free!(cxt);
+    }
+
+    #[test]
+    fn send_receive_works() {
+    	logging_test_set(LOG_LEVEL_INFO);
+    	let serv_port = next_port();
+    	let th_serv_port = serv_port;
+		let ready = Switch::new();
+		let rswitch = ready.clone();
+    	let t1 = thread::spawn(move ||{
+    		let mut serv = TcpListener::bind(("127.0.0.1", th_serv_port)).expect("Could not bind to port");
+    		rswitch.set(true);
+    		match serv.accept() {
+    			Ok((mut send_socket, addr)) => {
+    				log_info!(TESTsend_receive_works, "Got request from {:?}", addr);
+    				let mut size_bytes:[u8;8] = [0;8];
+    				send_socket.read_exact(&mut size_bytes).expect("Could not read size");
+    				let size_of_req = u64::from_le_bytes(size_bytes);
+    				log_info!(TESTsend_receive_works, "Got request size: {}", size_of_req);
+    				let mut read_vec = Vec::<u8>::new();
+    				read_vec.resize(size_of_req as usize, 0);
+    				send_socket.read_exact(read_vec.as_mut_slice()).expect("Could not read req");
+    				let send_back_size_bytes = size_of_req.to_le_bytes();
+    				send_socket.write_all(&send_back_size_bytes).expect("Could not write back size");
+    				send_socket.write_all(&read_vec).expect("Could not write back body");
+    				send_socket.flush().expect("Could not flush");
+    			},
+    			Err(e) => {
+    				log_error!(TESTsend_receive_works, "Could not accept request, {:?}", e);
+    				panic!("{:?}", e);
+    			}
+    		}
+    	});
+    	let to_send = vec![1, 2, 3, 4];
+    	loop {
+    		if !ready.get() {
+    			thread::yield_now();
+    		} else {
+    			break;
+    		}
+    	}
+    	let result = send_receive(("127.0.0.1", serv_port), &to_send).unwrap();
+    	assert_eq!(result.len(), 4);
+    	assert_eq!(result[0], to_send[0]);
+    	assert_eq!(result[1], to_send[1]);
+    	assert_eq!(result[2], to_send[2]);
+    	assert_eq!(result[3], to_send[3]);
+
+
+    	t1.join().unwrap();
     }
 }
