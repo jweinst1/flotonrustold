@@ -12,6 +12,7 @@ pub enum FlotonErr {
 	DateTime,
 	ReturnNotFound(*const u64),
 	UnexpectedByte(u8)
+	//TypeNotAtomic(*const u64, u8)
 }
 
 impl InPutOutPut for FlotonErr {
@@ -59,9 +60,8 @@ impl InPutOutPut for FlotonErr {
 					read_ptr = read_ptr.offset(1 as isize);
 					for _ in 0..key_depth {
 						let key_len = unsafe { *read_ptr };
-						read_ptr = read_ptr.offset((1 + key_len) as isize);
-						*place += (8 + (key_len * 8)) as usize;
-						
+						read_ptr = read_ptr.offset((1 + (key_len/8)) as isize);
+						*place += (8 + key_len) as usize;
 					}
 					return Ok(FlotonErr::ReturnNotFound(parsed_ptr));
 				},
@@ -133,7 +133,7 @@ mod tests {
     	keys.push(ERR_RET_NOT_FOUND);
 
     	let key_depth:u64 = 2;
-    	let key_length:u64 = 1;
+    	let key_length:u64 = 8;
     	let key_1:u64 = 66;
     	let key_2:u64 = 77;
     	keys.extend_from_slice(&key_depth.to_le_bytes());
@@ -148,9 +148,9 @@ mod tests {
     	match err_obj {
     		FlotonErr::ReturnNotFound(ptr) => unsafe {
     			assert_eq!(*ptr, 2);
-    			assert_eq!(*(ptr.offset(1)), 1);
+    			assert_eq!(*(ptr.offset(1)), 8);
     			assert_eq!(*(ptr.offset(2)), 66);
-    			assert_eq!(*(ptr.offset(3)), 1);
+    			assert_eq!(*(ptr.offset(3)), 8);
     			assert_eq!(*(ptr.offset(4)), 77);			
     		},
     		_=> panic!("Execpted return not found error, but got different error {:?}", err_obj)

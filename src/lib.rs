@@ -8,6 +8,7 @@ pub mod datetime;
 pub mod errors;
 pub mod db_args;
 pub mod signals;
+pub mod keys;
 pub mod circular;
 pub mod trie;
 pub mod tlocal;

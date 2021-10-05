@@ -143,6 +143,10 @@ impl<T: 'static> TcpServer<T> {
 		self.shutter.set(true);
 		self.acceptor.take().unwrap().join().unwrap();
 	}
+
+	pub fn is_ready(&self) -> bool {
+		self.ready.get()
+	}
 }
 
 /**
@@ -209,8 +213,6 @@ mod tests {
 	    			Err(e) => panic!("Got Error on tcp {:?}", e)
 	    		}
     		}
-    		robj.0.flush().expect("Could not flush");
-    		robj.0.shutdown(Shutdown::Both).expect("shutdown call failed");
     	}
     	free!(obj);
     }
@@ -269,6 +271,9 @@ mod tests {
         let cxt = alloc!(Context(8));
         let mut server = TcpServer::<Context>::new(3, 5, &serv_addr, serv_port, &pker, do_echo, TcpServerContext::new(cxt));
         server.start();
+        while !server.is_ready() {
+        	thread::yield_now();
+        }
         let t1 = thcall!(80, 5, Stream(TcpStream::connect(("127.0.0.1", serv_port)).unwrap()).readwrite());
         let t2 = thcall!(40, 5, Stream(TcpStream::connect(("127.0.0.1", serv_port)).unwrap()).readwrite());
         let t3 = thcall!(40, 5, Stream(TcpStream::connect(("127.0.0.1", serv_port)).unwrap()).readwrite());
