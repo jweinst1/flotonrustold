@@ -14,36 +14,91 @@ use std::io::prelude::*;
  */
 
 
-fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
+#[derive(Debug)]
+enum KeyAction {
+    Return,
+    AtomicOp
+}
+
+fn run_key_action(action:KeyAction, place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
     let mut key_ptr = unsafe { cmd.as_ptr().offset(*place as isize) as *const u64 };
     let key_orig = key_ptr;
-	let key_depth = unsafe { *key_ptr };
+    let key_depth = unsafe { *key_ptr };
     key_ptr = unsafe { key_ptr.offset(1) };
-	*place += 8;
-	let mut cur_map = data;
-	let mut not_found = false;
-	for _ in 0..key_depth {
-		let key_len = (unsafe { *key_ptr }) as usize; // todo align error
+    *place += 8;
+    let mut cur_map = data;
+    let mut not_found = false;
+    //advance to last before end
+    for _ in 0..(key_depth-1) {
+        let key_len = (unsafe { *key_ptr }) as usize; // todo align error
         key_ptr = unsafe { key_ptr.offset(1) };
-		*place += 8;
-		if !not_found {
-			match (*cur_map).get_map(&cmd[*place..(*place + key_len)]) {
-				Some(inner_map) => cur_map = inner_map,
-				None => {
-					// start skipping
-					not_found = true;
-				}
-			}
-		}
+        *place += 8;
+        if !not_found {
+            match (*cur_map).get_map(&cmd[*place..(*place + key_len)]) {
+                Some(inner_map) => cur_map = inner_map,
+                None => {
+                    // start skipping
+                    not_found = true;
+                }
+            }
+        }
         key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
-		*place += key_len;
-	}
-	if !not_found  { 
-		(*cur_map).output_binary(output);
-        Ok(()) 
-	} else {
+        *place += key_len;
+    }
+    if !not_found  {
+        // take special action at last key segment
+        match action {
+            KeyAction::Return => {
+                let key_len = (unsafe { *key_ptr }) as usize; // todo align error
+                key_ptr = unsafe { key_ptr.offset(1) };
+                *place += 8;
+                return match (*cur_map).get_map(&cmd[*place..(*place + key_len)]) {
+                    Some(inner_obj) => { 
+                        inner_obj.output_binary(output);
+                        *place += key_len;
+                        Ok(())
+                    },
+                    None => {
+                        *place += key_len;
+                        Err(FlotonErr::ReturnNotFound(key_orig)) 
+                    }
+                };
+            },
+            KeyAction::AtomicOp => {
+                let key_len = (unsafe { *key_ptr }) as usize; // todo align error
+                key_ptr = unsafe { key_ptr.offset(1) };
+                *place += 8;
+                return match (*cur_map).get_map(&cmd[*place..(*place + key_len)]) {
+                    Some(inner_obj) => {
+                        *place += key_len;
+                        //run_operation(place, cmd, output, inner_obj.value());
+                        //inner_obj.output_binary(output);
+                        //key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
+                        Ok(())
+                    },
+                    None => { 
+                        key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
+                        *place += key_len;
+                        Err(FlotonErr::ReturnNotFound(key_orig)) 
+                    }
+                };
+            }
+        }
+    } else {
+        let key_len = (unsafe { *key_ptr }) as usize; // todo align error
+        *place += 8;
+        *place += key_len;
         Err(FlotonErr::ReturnNotFound(key_orig))
     }
+}
+
+fn run_cmd_op_atomic(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
+    run_key_action(KeyAction::AtomicOp, place, cmd, data, output)
+}
+
+
+fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
+    run_key_action(KeyAction::Return, place, cmd, data, output)
 }
 
 fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) -> Result<(), FlotonErr> {
@@ -91,7 +146,7 @@ pub fn run_cmd(cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) {
                         e.output_binary(output);
                         match e {
                             FlotonErr::UnexpectedByte(b) => {
-                                log_error!(Input, "Unexpected set command byre: {}", b);
+                                log_error!(Input, "Unexpected set command byte: {}", b);
                                 return;
                             },
                             _ => ()
@@ -99,7 +154,14 @@ pub fn run_cmd(cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) {
                     },
                     Ok(_) => ()
                 }
-			}
+			},
+            constants::CMD_OP_ATOMIC => {
+                i += 1;
+                match run_cmd_op_atomic(&mut i, cmd, data, output) {
+                    Err(e) => e.output_binary(output),
+                    Ok(_) => ()
+                }
+            },
 			_ => {
                 log_error!(Input, "Unexpected command byte: {}", cmd[i]);
                 FlotonErr::UnexpectedByte(cmd[i]).output_binary(output);

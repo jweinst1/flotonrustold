@@ -329,7 +329,6 @@ mod tests {
     	assert_eq!(result[2], to_send[2]);
     	assert_eq!(result[3], to_send[3]);
 
-
     	t1.join().unwrap();
     }
 }

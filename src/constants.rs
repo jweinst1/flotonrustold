@@ -5,6 +5,7 @@
 pub const CMD_STOP:u8 = 0;
 pub const CMD_RETURN_KV:u8 = 1;
 pub const CMD_SET_KV:u8 = 2;
+pub const CMD_OP_ATOMIC:u8 = 3;
 
 //data types
 pub const VBIN_NOTHING:u8 = 0;

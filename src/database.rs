@@ -224,7 +224,7 @@ mod tests {
         let get_resp_size = u64::from_le_bytes(resp_header);
         assert_eq!(get_resp_size, 2);
         let mut resp_body:[u8;2] = [0;2];
-        client2.read_exact(&mut resp_body);
+        client2.read_exact(&mut resp_body).expect("Could not read back from get resp body");
         assert_eq!(VBIN_BOOL, resp_body[0]);
         assert_eq!(1, resp_body[1]);
         db.stop();
