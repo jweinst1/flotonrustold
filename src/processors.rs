@@ -1,5 +1,6 @@
 use std::ptr;
 use std::sync::atomic::Ordering;
+use crate::atomic_ops::run_atomic_operation;
 use crate::constants;
 use crate::values::Value;
 use crate::tlocal;
@@ -71,10 +72,13 @@ fn run_key_action(action:KeyAction, place: &mut usize, cmd:&[u8], data:&Containe
                 return match (*cur_map).get_map(&cmd[*place..(*place + key_len)]) {
                     Some(inner_obj) => {
                         *place += key_len;
-                        //run_operation(place, cmd, output, inner_obj.value());
-                        //inner_obj.output_binary(output);
-                        //key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
-                        Ok(())
+                        let atomic_val = inner_obj.value();
+                        match atomic_val {
+                            Ok(v) => {
+                                run_atomic_operation(place, cmd, key_orig, v, output)
+                            },
+                            Err(b) => Err(FlotonErr::TypeNotAtomic(key_orig, b))
+                        }
                     },
                     None => { 
                         key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };

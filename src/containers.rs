@@ -105,10 +105,10 @@ impl<T: Debug> Container<T> {
 		Container::Map(HashTree::new_table(HashScheme::default(), size))
 	}
 
-    pub fn value(&self) -> &T {
+    pub fn value(&self) -> Result<&T, u8> {
         match self {
-            Container::Val(v) => &v,
-            Container::Map(m) => panic!("Called value() on map: {:?}", m)
+            Container::Val(v) => Ok(&v),
+            Container::Map(m) => Err(VBIN_CMAP_BEGIN)
         }
     }
 
@@ -185,7 +185,7 @@ mod tests {
         match map {
             Container::Map(m) => match m.find_bytes(key, 8) {
                 Some(r) => unsafe { match r.read().as_ref() {
-                    Some(rval) => assert_eq!(rval.0.value().0, 10),
+                    Some(rval) => assert_eq!(rval.0.value().unwrap().0, 10),
                     None => panic!("Unexpected nullptr from shared loc {:?}", r)
                  } },
                 None => panic!("Expected map {:?} to contain value for key {:?}", m, key)
@@ -207,7 +207,7 @@ mod tests {
         map.set_map(key, val);
         match map.get_map_shared(key) { Some(rsh) => unsafe {  
             match rsh.read().as_ref() { 
-                Some(rval) =>  assert_eq!(rval.0.value().0, 10), 
+                Some(rval) =>  assert_eq!(rval.0.value().unwrap().0, 10), 
                 None => panic!("Unexpected nullptr from shared loc {:?}", rsh) 
             }
             }, 
@@ -227,7 +227,7 @@ mod tests {
         let val = Container::Val(TestType(10));
         map.set_map(key, val);
         match map.get_map(key) {
-            Some(rv) => assert_eq!(rv.value().0, 10),
+            Some(rv) => assert_eq!(rv.value().unwrap().0, 10),
             None => panic!("key: {:?} not found in map {:?}", key, map)
         } 
     }
@@ -255,7 +255,7 @@ mod tests {
         created.set_map(key2, val);
         // test for overwrite
         match map.create_set_map(key, 30).get_map(key2) {
-            Some(val_c) => assert_eq!(val_c.value().0, 10),
+            Some(val_c) => assert_eq!(val_c.value().unwrap().0, 10),
             None => panic!("Expected to find key {:?} nested in key {:?}", key2, key)
         }
     }

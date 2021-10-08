@@ -3,6 +3,7 @@ use std::sync::atomic::Ordering;
 use crate::constants::*;
 use crate::traits::*;
 use crate::logging::*;
+use crate::keys;
 
 /**
  * A generic error type that covers any non-fatal error
@@ -11,8 +12,8 @@ use crate::logging::*;
 pub enum FlotonErr {
 	DateTime,
 	ReturnNotFound(*const u64),
-	UnexpectedByte(u8)
-	//TypeNotAtomic(*const u64, u8)
+	UnexpectedByte(u8),
+	TypeNotAtomic(*const u64, u8)
 }
 
 impl InPutOutPut for FlotonErr {
@@ -22,24 +23,17 @@ impl InPutOutPut for FlotonErr {
 		match self {
 			FlotonErr::DateTime => output.push(ERR_DATE_TIME),
 			FlotonErr::ReturnNotFound(keys) => {
-				let mut key_ptr = *keys;
 				output.push(ERR_RET_NOT_FOUND);
-				unsafe {
-					let key_depth = *key_ptr;
-					output.extend_from_slice(&key_depth.to_le_bytes());
-					key_ptr = key_ptr.offset(1 as isize);
-					for _ in 0..key_depth {
-						let key_len = *key_ptr;
-						output.extend_from_slice(&key_len.to_le_bytes());
-						key_ptr = key_ptr.offset(1 as isize);
-						unsafe { output.extend_from_slice(slice::from_raw_parts(key_ptr as *const u8, key_len as usize)); }
-						key_ptr = key_ptr.offset((key_len / 8) as isize);
-					}
-				}
+				keys::key_u64_out_vu8(*keys, output);
 			},
 			FlotonErr::UnexpectedByte(b) => {
 				output.push(ERR_UNEXPECT_BYTE);
 				output.push(*b);
+			},
+			FlotonErr::TypeNotAtomic(key, t) => {
+				output.push(ERR_TYPE_NOT_ATOMIC);
+				output.push(*t);
+				keys::key_u64_out_vu8(*key, output);
 			}
 		}
 	}
@@ -53,16 +47,7 @@ impl InPutOutPut for FlotonErr {
 				ERR_DATE_TIME => Ok(FlotonErr::DateTime),
 				ERR_RET_NOT_FOUND => unsafe {
 					let parsed_ptr = input.as_ptr().offset(*place as isize) as *const u64;
-					let mut read_ptr = parsed_ptr;
-					// advancement
-					let key_depth = unsafe { *read_ptr };
-					*place += 8;
-					read_ptr = read_ptr.offset(1 as isize);
-					for _ in 0..key_depth {
-						let key_len = unsafe { *read_ptr };
-						read_ptr = read_ptr.offset((1 + (key_len/8)) as isize);
-						*place += (8 + key_len) as usize;
-					}
+					*place += keys::key_u64_len(parsed_ptr);
 					return Ok(FlotonErr::ReturnNotFound(parsed_ptr));
 				},
 				ERR_UNEXPECT_BYTE => {
@@ -70,6 +55,14 @@ impl InPutOutPut for FlotonErr {
 					*place += 1;
 					return Ok(parsed);
 				},
+				ERR_TYPE_NOT_ATOMIC => {
+					let val_type = input[*place];
+					*place += 1;
+					let parsed_ptr = unsafe { input.as_ptr().offset(*place as isize) as *const u64 };
+					let parsed = FlotonErr::TypeNotAtomic(parsed_ptr, val_type);
+					*place += keys::key_u64_len(parsed_ptr);
+					return Ok(parsed);
+				}
 				_ => return Err(FlotonErr::UnexpectedByte(err_type))
 			}
 		} else {
@@ -154,6 +147,39 @@ mod tests {
     			assert_eq!(*(ptr.offset(4)), 77);			
     		},
     		_=> panic!("Execpted return not found error, but got different error {:?}", err_obj)
+    	}
+    }
+
+    #[test]
+    fn err_in_type_not_atom_works() {
+    	let mut err_data = Vec::<u8>::new();
+    	err_data.push(VBIN_ERROR);
+    	err_data.push(ERR_TYPE_NOT_ATOMIC);
+    	err_data.push(VBIN_BOOL);
+
+    	let key_depth:u64 = 2;
+    	let key_length:u64 = 8;
+    	let key_1:u64 = 6644;
+    	let key_2:u64 = 7722;
+    	err_data.extend_from_slice(&key_depth.to_le_bytes());
+    	err_data.extend_from_slice(&key_length.to_le_bytes());
+    	err_data.extend_from_slice(&key_1.to_le_bytes());
+    	err_data.extend_from_slice(&key_length.to_le_bytes());
+    	err_data.extend_from_slice(&key_2.to_le_bytes());
+
+    	let mut i = 0;
+    	let err_obj = FlotonErr::input_binary(err_data.as_slice(), &mut i).expect("Cannot parse the error from bytes");
+    	assert_eq!(i, 43);
+    	match err_obj {
+    		FlotonErr::TypeNotAtomic(ptr, t) => unsafe {
+    			assert_eq!(t, VBIN_BOOL);
+    			assert_eq!(*ptr, 2);
+    			assert_eq!(*(ptr.offset(1)), 8);
+    			assert_eq!(*(ptr.offset(2)), 6644);
+    			assert_eq!(*(ptr.offset(3)), 8);
+    			assert_eq!(*(ptr.offset(4)), 7722);
+    		},
+    		_ => panic!("Expected type not atomic error, but got different error {:?}", err_obj)
     	}
     }
 }

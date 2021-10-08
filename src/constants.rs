@@ -18,10 +18,14 @@ pub const VBIN_ERROR:u8 = 5;
 //symbolizes intra-map key
 pub const CMAPB_KEY:u8 = 2;
 
+//atomic ops
+pub const OP_ATOMIC_STORE:u8 = 0;
+
 //errors
 pub const ERR_DATE_TIME:u8 = 0;
 pub const ERR_RET_NOT_FOUND:u8 = 1;
 pub const ERR_UNEXPECT_BYTE:u8 = 2;
+pub const ERR_TYPE_NOT_ATOMIC:u8 = 3;
 
 //db states
 pub const DBSTATE_START:u8 = 0;

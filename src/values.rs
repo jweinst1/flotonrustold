@@ -12,11 +12,20 @@ pub enum Value {
 }
 
 impl Value {
-	fn to_bool(&self) -> bool {
+	#[inline]
+	pub fn to_bool(&self) -> bool {
 		match self {
 			Value::Nothing => false,
 			Value::Bool(b) => *b,
-			Value::ABool(b) => b.load(Ordering::SeqCst)
+			Value::ABool(b) => b.load(Ordering::Acquire)
+		}
+	}
+
+	pub fn store(&self, other:&Value, key:*const u64) -> Result<(), FlotonErr> {
+		match self {
+			Value::Nothing => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_NOTHING)),
+			Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
+			Value::ABool(b) => { b.store(other.to_bool(), Ordering::Release); Ok(()) }
 		}
 	}
 }
@@ -62,6 +71,7 @@ impl InPutOutPut for Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ptr;
 
     #[test]
     fn to_bool_works() {
@@ -84,5 +94,15 @@ mod tests {
     	assert_eq!(out[1], 1);
     	assert_eq!(out[2], constants::VBIN_ABOOL);
     	assert_eq!(out[3], 1);
+    }
+
+    #[test]
+    fn store_works() {
+    	let b = Value::ABool(AtomicBool::new(true));
+    	let a = Value::Bool(false);
+    	let c = Value::Nothing;
+    	b.store(&a, ptr::null()).expect("Unable to store bool");
+    	b.store(&c, ptr::null()).expect("Unable to store bool");
+    	assert!(!b.to_bool());
     }
 }
