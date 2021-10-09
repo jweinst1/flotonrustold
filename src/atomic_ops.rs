@@ -9,8 +9,8 @@ use crate::traits::*;
 
 
 pub fn run_atomic_operation(place: &mut usize, cmd:&[u8], key:*const u64, data:&Value, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
-	let op_type = cmd[*place];
-	*place += 1;
+	let op_type = unsafe { *( cmd.as_ptr().offset(*place as isize) as *const u16)};
+	*place += 2;
 	match op_type {
 		OP_ATOMIC_STORE => {
 			let arg = match Value::input_binary(cmd, place) {
@@ -19,7 +19,7 @@ pub fn run_atomic_operation(place: &mut usize, cmd:&[u8], key:*const u64, data:&
 			};
 			data.store(&arg, key)
 		},
-		_ => Err(FlotonErr::UnexpectedByte(op_type))
+		_ => Err(FlotonErr::UnexpectedByte((op_type >> 8) as u8))
 	}
 }
 
@@ -32,11 +32,12 @@ mod tests {
     fn atomic_store_works() {
     	let key:[u64;3] = [1, 8, 4455];
     	let obj = Value::ABool(AtomicBool::new(false));
-    	let cmd = [OP_ATOMIC_STORE, VBIN_BOOL, 1, /*Unrelated byte*/ 56];
+        let op_16 = OP_ATOMIC_STORE.to_le_bytes();
+    	let cmd = [op_16[0], op_16[1], VBIN_BOOL, 1, /*Unrelated byte*/ 56];
     	let mut output = vec![];
     	let mut i = 0;
     	run_atomic_operation(&mut i, &cmd, key.as_ptr(), &obj, &mut output).expect("Unable to run atomic op success");
-    	assert_eq!(i, 3);
+    	assert_eq!(i, 4);
     	assert!(obj.to_bool());
     }
 }

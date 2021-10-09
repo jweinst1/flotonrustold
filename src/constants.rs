@@ -19,7 +19,8 @@ pub const VBIN_ERROR:u8 = 5;
 pub const CMAPB_KEY:u8 = 2;
 
 //atomic ops
-pub const OP_ATOMIC_STORE:u8 = 0;
+// These are a bit moe numerous so better to do u16
+pub const OP_ATOMIC_STORE:u16 = 0;
 
 //errors
 pub const ERR_DATE_TIME:u8 = 0;
