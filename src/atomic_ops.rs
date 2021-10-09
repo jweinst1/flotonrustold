@@ -1,3 +1,5 @@
+use std::sync::atomic::Ordering;
+
 use crate::constants::*;
 use crate::values::Value;
 use crate::errors::FlotonErr;
@@ -17,8 +19,15 @@ pub fn run_atomic_operation(place: &mut usize, cmd:&[u8], key:*const u64, data:&
 				Ok(v) => v,
 				Err(e) => return Err(e)
 			};
-			data.store(&arg, key)
+			data.store(&arg, Ordering::Release, key)
 		},
+        OP_ATOMIC_STORE_RELAX => {
+            let arg = match Value::input_binary(cmd, place) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+            data.store(&arg, Ordering::Relaxed, key)
+        },
 		_ => Err(FlotonErr::UnexpectedByte((op_type >> 8) as u8))
 	}
 }
@@ -39,5 +48,12 @@ mod tests {
     	run_atomic_operation(&mut i, &cmd, key.as_ptr(), &obj, &mut output).expect("Unable to run atomic op success");
     	assert_eq!(i, 4);
     	assert!(obj.to_bool());
+        i = 0;
+        output.clear();
+        let op2_16 = OP_ATOMIC_STORE_RELAX.to_le_bytes();
+        let cmd2 = [op2_16[0], op2_16[1], VBIN_BOOL, 0, /*Unrelated byte*/ 56];
+        run_atomic_operation(&mut i, &cmd2, key.as_ptr(), &obj, &mut output).expect("unable to run atomic op success");
+        assert_eq!(i, 4);
+        assert!(!obj.to_bool());
     }
 }

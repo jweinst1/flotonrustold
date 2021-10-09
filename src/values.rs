@@ -21,11 +21,11 @@ impl Value {
 		}
 	}
 
-	pub fn store(&self, other:&Value, key:*const u64) -> Result<(), FlotonErr> {
+	pub fn store(&self, other:&Value, order:Ordering, key:*const u64) -> Result<(), FlotonErr> {
 		match self {
 			Value::Nothing => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_NOTHING)),
 			Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
-			Value::ABool(b) => { b.store(other.to_bool(), Ordering::Release); Ok(()) }
+			Value::ABool(b) => { b.store(other.to_bool(), order); Ok(()) }
 		}
 	}
 }
@@ -53,7 +53,7 @@ impl InPutOutPut for Value {
 			},
 			constants::VBIN_BOOL => {
 				*place += 1;
-				let to_ret = Value::Bool(*place != 0);
+				let to_ret = Value::Bool(input[*place] != 0);
 				*place += 1;
 				Ok(to_ret)
 			},
@@ -97,12 +97,34 @@ mod tests {
     }
 
     #[test]
+    fn input_bool_works() {
+    	let mut i = 0;
+    	let f_bytes = [constants::VBIN_BOOL, 0];
+    	let t_bytes = [constants::VBIN_BOOL, 1];
+
+    	let res1 = Value::input_binary(&f_bytes, &mut i).expect("Could not parse false value");
+    	assert_eq!(i, 2);
+    	i = 0;
+    	let res2 = Value::input_binary(&t_bytes, &mut i).expect("Could not parse true value");
+    	assert_eq!(i, 2);
+    	match res1 {
+    		Value::Bool(b) => assert!(!b),
+    		_ => panic!("Expected bool, got other type")
+    	}
+
+    	match res2 {
+    		Value::Bool(b) => assert!(b),
+    		_ => panic!("Expected bool, got other type")
+    	}
+    }
+
+    #[test]
     fn store_works() {
     	let b = Value::ABool(AtomicBool::new(true));
     	let a = Value::Bool(false);
     	let c = Value::Nothing;
-    	b.store(&a, ptr::null()).expect("Unable to store bool");
-    	b.store(&c, ptr::null()).expect("Unable to store bool");
+    	b.store(&a, Ordering::Release, ptr::null()).expect("Unable to store bool");
+    	b.store(&c, Ordering::Release, ptr::null()).expect("Unable to store bool");
     	assert!(!b.to_bool());
     }
 }
