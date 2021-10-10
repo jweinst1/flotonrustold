@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicI64, Ordering};
 use std::io::prelude::*;
 use crate::constants;
 use crate::errors::FlotonErr;
@@ -10,7 +10,9 @@ pub enum Value {
 	Bool(bool),
 	ABool(AtomicBool),
 	UInt(u64),
-	AUInt(AtomicU64)
+	AUInt(AtomicU64),
+	IInt(i64),
+	AIInt(AtomicI64)
 }
 
 impl Value {
@@ -21,7 +23,9 @@ impl Value {
 			Value::Bool(b) => *b,
 			Value::ABool(b) => b.load(Ordering::Acquire),
 			Value::UInt(n) => *n != 0,
-			Value::AUInt(n) => n.load(Ordering::Acquire) != 0
+			Value::AUInt(n) => n.load(Ordering::Acquire) != 0,
+			Value::IInt(n) => *n != 0,
+			Value::AIInt(n) => n.load(Ordering::Acquire) != 0
 		}
 	}
 
@@ -32,7 +36,22 @@ impl Value {
 			Value::Bool(b) => *b as u64,
 			Value::ABool(b) => b.load(Ordering::Acquire) as u64,
 			Value::UInt(n) => *n,
-			Value::AUInt(n) => n.load(Ordering::Acquire)
+			Value::AUInt(n) => n.load(Ordering::Acquire),
+			Value::IInt(n) => *n as u64,
+			Value::AIInt(n) => n.load(Ordering::Acquire) as u64
+		}
+	}
+
+	#[inline]
+	pub fn to_iint(&self) -> i64 {
+		match self {
+			Value::Nothing => 0,
+			Value::Bool(b) => *b as i64,
+			Value::ABool(b) => b.load(Ordering::Acquire) as i64,
+			Value::UInt(n) => *n as i64,
+			Value::AUInt(n) => n.load(Ordering::Acquire) as i64,
+			Value::IInt(n) => *n,
+			Value::AIInt(n) => n.load(Ordering::Acquire)
 		}
 	}
 
@@ -42,7 +61,9 @@ impl Value {
 			Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
 			Value::ABool(b) => { b.store(other.to_bool(), order); Ok(()) },
 			Value::UInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
-			Value::AUInt(n) => { n.store(other.to_uint(), order); Ok(()) }
+			Value::AUInt(n) => { n.store(other.to_uint(), order); Ok(()) },
+			Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_IINT)),
+			Value::AIInt(n) => { n.store(other.to_iint(), order); Ok(()) }
 		}
 	}
 }
@@ -65,6 +86,14 @@ impl InPutOutPut for Value {
 			},
 			Value::AUInt(n) => {
 				output.push(constants::VBIN_AUINT);
+				output.extend_from_slice(&n.load(Ordering::Acquire).to_le_bytes());
+			},
+			Value::IInt(n) => {
+				output.push(constants::VBIN_IINT);
+				output.extend_from_slice(&n.to_le_bytes());
+			},
+			Value::AIInt(n) => {
+				output.push(constants::VBIN_AIINT);
 				output.extend_from_slice(&n.load(Ordering::Acquire).to_le_bytes());
 			}
 		}
@@ -96,6 +125,16 @@ impl InPutOutPut for Value {
 				let int_val = unsafe { *(input.as_ptr().offset(*place as isize) as *const u64) };
 				*place += 8;
 				Ok(Value::AUInt(AtomicU64::new(int_val)))				
+			},
+			constants::VBIN_IINT => {
+				let int_val = unsafe { *(input.as_ptr().offset(*place as isize) as *const i64) };
+				*place += 8;
+				Ok(Value::IInt(int_val))
+			},
+			constants::VBIN_AIINT => {
+				let int_val = unsafe { *(input.as_ptr().offset(*place as isize) as *const i64) };
+				*place += 8;
+				Ok(Value::AIInt(AtomicI64::new(int_val)))				
 			}
 			_ => Err(FlotonErr::UnexpectedByte(in_type))
 		}
@@ -130,6 +169,18 @@ mod tests {
     }
 
     #[test]
+    fn to_iint_works() {
+    	let a = Value::Bool(true);
+    	let b = Value::Nothing;
+    	let c = Value::IInt(5);
+    	let d = Value::AIInt(AtomicI64::new(5));
+    	assert_eq!(a.to_iint(), 1);
+    	assert_eq!(b.to_iint(), 0);
+    	assert_eq!(c.to_iint(), 5);
+    	assert_eq!(d.to_iint(), 5);
+    }
+
+    #[test]
     fn output_bool_works() {
     	let a = Value::Bool(true);
     	let b = Value::ABool(AtomicBool::new(true));
@@ -153,6 +204,19 @@ mod tests {
     	unsafe { assert_eq!(*(out.as_ptr().offset(1 as isize) as *const u64), 8); }
     	assert_eq!(out[9], constants::VBIN_AUINT);
     	unsafe { assert_eq!(*(out.as_ptr().offset(10 as isize) as *const u64), 5); }
+    }
+
+    #[test]
+    fn output_iint_works() {
+    	let a = Value::IInt(8);
+    	let b = Value::AIInt(AtomicI64::new(5));
+    	let mut out = Vec::<u8>::new();
+    	a.output_binary(&mut out);
+    	b.output_binary(&mut out);
+    	assert_eq!(out[0], constants::VBIN_IINT);
+    	unsafe { assert_eq!(*(out.as_ptr().offset(1 as isize) as *const i64), 8); }
+    	assert_eq!(out[9], constants::VBIN_AIINT);
+    	unsafe { assert_eq!(*(out.as_ptr().offset(10 as isize) as *const i64), 5); }
     }
 
     #[test]
@@ -193,6 +257,21 @@ mod tests {
     }
 
     #[test]
+    fn input_iint_works() {
+    	let mut i = 0;
+    	let input_num:i64 = -9;
+    	let num_bytes = input_num.to_le_bytes();
+    	let full_input = [constants::VBIN_IINT, num_bytes[0], num_bytes[1], num_bytes[2], num_bytes[3],
+    	                  num_bytes[4], num_bytes[5], num_bytes[6], num_bytes[7]];
+    	let res = Value::input_binary(&full_input, &mut i).expect("Could not parse uint value");
+    	assert_eq!(i, 9);
+    	match res {
+    		Value::IInt(n) => assert_eq!(n, -9),
+    		_ => panic!("Expected Uint, got other type")
+    	}
+    }
+
+    #[test]
     fn store_works() {
     	let b = Value::ABool(AtomicBool::new(true));
     	let a = Value::Bool(false);
@@ -200,5 +279,11 @@ mod tests {
     	b.store(&a, Ordering::Release, ptr::null()).expect("Unable to store bool");
     	b.store(&c, Ordering::Release, ptr::null()).expect("Unable to store bool");
     	assert!(!b.to_bool());
+
+    	// Conversion between uint and iint
+    	let num = Value::AIInt(AtomicI64::new(-50));
+    	let arg = Value::UInt(20);
+    	num.store(&arg, Ordering::Release, ptr::null()).expect("Unable to store uint");
+    	assert_eq!(20, num.to_uint());
     }
 }
