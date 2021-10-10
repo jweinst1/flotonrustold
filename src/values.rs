@@ -143,6 +143,19 @@ mod tests {
     }
 
     #[test]
+    fn output_uint_works() {
+    	let a = Value::UInt(8);
+    	let b = Value::AUInt(AtomicU64::new(5));
+    	let mut out = Vec::<u8>::new();
+    	a.output_binary(&mut out);
+    	b.output_binary(&mut out);
+    	assert_eq!(out[0], constants::VBIN_UINT);
+    	unsafe { assert_eq!(*(out.as_ptr().offset(1 as isize) as *const u64), 8); }
+    	assert_eq!(out[9], constants::VBIN_AUINT);
+    	unsafe { assert_eq!(*(out.as_ptr().offset(10 as isize) as *const u64), 5); }
+    }
+
+    #[test]
     fn input_bool_works() {
     	let mut i = 0;
     	let f_bytes = [constants::VBIN_BOOL, 0];
@@ -161,6 +174,21 @@ mod tests {
     	match res2 {
     		Value::Bool(b) => assert!(b),
     		_ => panic!("Expected bool, got other type")
+    	}
+    }
+
+    #[test]
+    fn input_uint_works() {
+    	let mut i = 0;
+    	let input_num:u64 = 9;
+    	let num_bytes = input_num.to_le_bytes();
+    	let full_input = [constants::VBIN_UINT, num_bytes[0], num_bytes[1], num_bytes[2], num_bytes[3],
+    	                  num_bytes[4], num_bytes[5], num_bytes[6], num_bytes[7]];
+    	let res = Value::input_binary(&full_input, &mut i).expect("Could not parse uint value");
+    	assert_eq!(i, 9);
+    	match res {
+    		Value::UInt(n) => assert_eq!(n, 9),
+    		_ => panic!("Expected Uint, got other type")
     	}
     }
 
