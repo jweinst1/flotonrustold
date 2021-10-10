@@ -14,6 +14,8 @@ pub const VBIN_ABOOL:u8 = 2;
 pub const VBIN_CMAP_BEGIN:u8 = 3;
 pub const VBIN_CMAP_END:u8 = 4;
 pub const VBIN_ERROR:u8 = 5;
+pub const VBIN_UINT:u8 = 6;
+pub const VBIN_AUINT:u8 = 7;
 
 //symbolizes intra-map key
 pub const CMAPB_KEY:u8 = 2;

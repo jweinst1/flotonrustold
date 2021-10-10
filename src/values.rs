@@ -8,7 +8,9 @@ use crate::traits::*;
 pub enum Value {
 	Nothing,
 	Bool(bool),
-	ABool(AtomicBool)
+	ABool(AtomicBool),
+	UInt(u64),
+	AUInt(AtomicU64)
 }
 
 impl Value {
@@ -17,7 +19,20 @@ impl Value {
 		match self {
 			Value::Nothing => false,
 			Value::Bool(b) => *b,
-			Value::ABool(b) => b.load(Ordering::Acquire)
+			Value::ABool(b) => b.load(Ordering::Acquire),
+			Value::UInt(n) => *n != 0,
+			Value::AUInt(n) => n.load(Ordering::Acquire) != 0
+		}
+	}
+
+	#[inline]
+	pub fn to_uint(&self) -> u64 {
+		match self {
+			Value::Nothing => 0,
+			Value::Bool(b) => *b as u64,
+			Value::ABool(b) => b.load(Ordering::Acquire) as u64,
+			Value::UInt(n) => *n,
+			Value::AUInt(n) => n.load(Ordering::Acquire)
 		}
 	}
 
@@ -25,7 +40,9 @@ impl Value {
 		match self {
 			Value::Nothing => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_NOTHING)),
 			Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
-			Value::ABool(b) => { b.store(other.to_bool(), order); Ok(()) }
+			Value::ABool(b) => { b.store(other.to_bool(), order); Ok(()) },
+			Value::UInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
+			Value::AUInt(n) => { n.store(other.to_uint(), order); Ok(()) }
 		}
 	}
 }
@@ -41,29 +58,46 @@ impl InPutOutPut for Value {
 			Value::ABool(b) => {
 				output.push(constants::VBIN_ABOOL);
 				output.push(b.load(Ordering::SeqCst) as u8);
+			},
+			Value::UInt(n) => {
+				output.push(constants::VBIN_UINT);
+				output.extend_from_slice(&n.to_le_bytes());
+			},
+			Value::AUInt(n) => {
+				output.push(constants::VBIN_AUINT);
+				output.extend_from_slice(&n.load(Ordering::Acquire).to_le_bytes());
 			}
 		}
 	}
 
 	fn input_binary(input:&[u8], place:&mut usize) -> Result<Self, FlotonErr> {
-		match input[*place] {
+		let in_type = input[*place];
+		*place += 1;
+		match in_type {
 			constants::VBIN_NOTHING => {
-				*place += 1;
 				Ok(Value::Nothing)
 			},
 			constants::VBIN_BOOL => {
-				*place += 1;
 				let to_ret = Value::Bool(input[*place] != 0);
 				*place += 1;
 				Ok(to_ret)
 			},
 			constants::VBIN_ABOOL => {
-				*place += 1;
-				let to_ret = Value::ABool(AtomicBool::new(*place != 0));
+				let to_ret = Value::ABool(AtomicBool::new(input[*place] != 0));
 				*place += 1;
 				Ok(to_ret)		
 			},
-			_ => Err(FlotonErr::UnexpectedByte(input[*place]))
+			constants::VBIN_UINT => {
+				let int_val = unsafe { *(input.as_ptr().offset(*place as isize) as *const u64) };
+				*place += 8;
+				Ok(Value::UInt(int_val))
+			},
+			constants::VBIN_AUINT => {
+				let int_val = unsafe { *(input.as_ptr().offset(*place as isize) as *const u64) };
+				*place += 8;
+				Ok(Value::AUInt(AtomicU64::new(int_val)))				
+			}
+			_ => Err(FlotonErr::UnexpectedByte(in_type))
 		}
 	}
 }
@@ -81,6 +115,18 @@ mod tests {
     	assert!(a.to_bool());
     	assert!(!b.to_bool());
     	assert!(c.to_bool());
+    }
+
+    #[test]
+    fn to_uint_works() {
+    	let a = Value::Bool(true);
+    	let b = Value::Nothing;
+    	let c = Value::UInt(5);
+    	let d = Value::AUInt(AtomicU64::new(5));
+    	assert_eq!(a.to_uint(), 1);
+    	assert_eq!(b.to_uint(), 0);
+    	assert_eq!(c.to_uint(), 5);
+    	assert_eq!(d.to_uint(), 5);
     }
 
     #[test]
