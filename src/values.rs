@@ -66,6 +66,18 @@ impl Value {
 			Value::AIInt(n) => { n.store(other.to_iint(), order); Ok(()) }
 		}
 	}
+
+	pub fn swap(&self, other:&Value, order:Ordering, key:*const u64) -> Result<Value, FlotonErr> {
+		match self {
+			Value::Nothing => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_NOTHING)),
+			Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
+			Value::ABool(b) => Ok(Value::Bool(b.swap(other.to_bool(), order))),
+			Value::UInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
+			Value::AUInt(n) => Ok(Value::UInt(n.swap(other.to_uint(), order))),
+			Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_IINT)),
+			Value::AIInt(n) => Ok(Value::IInt(n.swap(other.to_iint(), order)))
+		}
+	}
 }
 
 impl InPutOutPut for Value {
@@ -285,5 +297,28 @@ mod tests {
     	let arg = Value::UInt(20);
     	num.store(&arg, Ordering::Release, ptr::null()).expect("Unable to store uint");
     	assert_eq!(20, num.to_uint());
+    }
+
+    #[test]
+    fn swap_works() {
+    	let b = Value::ABool(AtomicBool::new(true));
+    	let a = Value::Bool(false);
+    	let c = Value::Nothing;
+    	match b.swap(&a, Ordering::Release, ptr::null()) {
+    		Ok(swapped) => assert!(swapped.to_bool()),
+    		Err(e) => panic!("Expected success on bool swap, got err: {:?}", e)
+    	}
+
+    	match b.swap(&c, Ordering::Release, ptr::null()) {
+    		Ok(swapped) => assert!(!swapped.to_bool()),
+    		Err(e) => panic!("Expected success on bool swap, got err: {:?}", e)
+    	}
+
+    	let num = Value::AUInt(AtomicU64::new(50));
+    	let arg = Value::UInt(30);
+    	match num.swap(&arg, Ordering::Release, ptr::null()) {
+    		Ok(swapped) => assert_eq!(swapped.to_uint(), 50),
+    		Err(e) => panic!("Expected success on uint swap, got err: {:?}", e)
+    	}
     }
 }

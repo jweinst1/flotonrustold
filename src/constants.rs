@@ -26,6 +26,8 @@ pub const CMAPB_KEY:u8 = 2;
 // These are a bit moe numerous so better to do u16
 pub const OP_ATOMIC_STORE:u16 = 0;
 pub const OP_ATOMIC_STORE_RELAX:u16 = 1;
+pub const OP_ATOMIC_SWAP:u16 = 2;
+pub const OP_ATOMIC_SWAP_RELAX:u16 = 3;
 
 //errors
 pub const ERR_DATE_TIME:u8 = 0;
