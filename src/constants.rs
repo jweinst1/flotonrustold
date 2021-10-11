@@ -28,6 +28,8 @@ pub const OP_ATOMIC_STORE:u16 = 0;
 pub const OP_ATOMIC_STORE_RELAX:u16 = 1;
 pub const OP_ATOMIC_SWAP:u16 = 2;
 pub const OP_ATOMIC_SWAP_RELAX:u16 = 3;
+pub const OP_ATOMIC_COND_STORE:u16 = 4;
+pub const OP_ATOMIC_COND_STORE_RELAX:u16 = 5;
 
 //errors
 pub const ERR_DATE_TIME:u8 = 0;

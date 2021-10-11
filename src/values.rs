@@ -78,6 +78,31 @@ impl Value {
 			Value::AIInt(n) => Ok(Value::IInt(n.swap(other.to_iint(), order)))
 		}
 	}
+
+	pub fn cond_store(&self, 
+		              expected:&Value, 
+		              desired:&Value, 
+		              order:Ordering,
+		              key:*const u64) -> Result<bool, FlotonErr> {
+		match self {
+			Value::Nothing => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_NOTHING)),
+			Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
+			Value::ABool(b) => match b.compare_exchange(expected.to_bool(), desired.to_bool(), order, Ordering::Relaxed) {
+				Ok(_) => Ok(true),
+				Err(_) => Ok(false)
+			},
+			Value::UInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
+			Value::AUInt(n) => match n.compare_exchange(expected.to_uint(), desired.to_uint(), order, Ordering::Relaxed) {
+				Ok(_) => Ok(true),
+				Err(_) => Ok(false)
+			},
+			Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_IINT)),
+			Value::AIInt(n) => match n.compare_exchange(expected.to_iint(), desired.to_iint(), order, Ordering::Relaxed) {
+				Ok(_) => Ok(true),
+				Err(_) => Ok(false)
+			}
+		}
+	}
 }
 
 impl InPutOutPut for Value {
@@ -319,6 +344,25 @@ mod tests {
     	match num.swap(&arg, Ordering::Release, ptr::null()) {
     		Ok(swapped) => assert_eq!(swapped.to_uint(), 50),
     		Err(e) => panic!("Expected success on uint swap, got err: {:?}", e)
+    	}
+    }
+
+    #[test]
+    fn cond_store_works() {
+    	let b = Value::ABool(AtomicBool::new(true));
+    	let expected = Value::Bool(true);
+    	let desired = Value::Bool(false);
+    	match b.cond_store(&expected, &desired, Ordering::Release, ptr::null()) {
+    		Ok(res) => assert!(res),
+    		Err(e) => panic!("Expected cond store to succeed but got err: {:?}", e)
+    	}
+
+    	let num = Value::AUInt(AtomicU64::new(50));
+    	let num_expected = Value::UInt(40);
+    	let num_desired = Value::UInt(100);
+    	match num.cond_store(&num_expected, &num_desired, Ordering::Relaxed, ptr::null()) {
+    		Ok(res) => assert!(!res),
+    		Err(e) => panic!("Expected cond store to succeed but got err: {:?}", e)
     	}
     }
 }
