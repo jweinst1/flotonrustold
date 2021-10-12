@@ -78,6 +78,42 @@ pub fn run_atomic_operation(place: &mut usize, cmd:&[u8], key:*const u64, data:&
                 Ok(b) => {out_bool(b, output); Ok(())},
                 Err(e) => Err(e)
             }
+        },
+        OP_ATOMIC_COND_SWAP => {
+            let expected = match Value::input_binary(cmd, place) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+            let desired = match Value::input_binary(cmd, place) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+            match data.cond_swap(&expected, &desired, Ordering::Release, key) {
+                Ok(pair) => {
+                    out_bool(pair.0, output);
+                    pair.1.output_binary(output); 
+                    Ok(())
+                },
+                Err(e) => Err(e)
+            }
+        },
+        OP_ATOMIC_COND_SWAP_RELAX => {
+            let expected = match Value::input_binary(cmd, place) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+            let desired = match Value::input_binary(cmd, place) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+            match data.cond_swap(&expected, &desired, Ordering::Relaxed, key) {
+                Ok(pair) => {
+                    out_bool(pair.0, output);
+                    pair.1.output_binary(output); 
+                    Ok(())
+                },
+                Err(e) => Err(e)
+            }
         }
 		_ => Err(FlotonErr::UnexpectedByte((op_type >> 8) as u8))
 	}
@@ -154,5 +190,33 @@ mod tests {
         assert!(obj.to_bool());
         assert_eq!(output[0], VBIN_BOOL);
         assert_eq!(output[1], 0); // cond store failed
+    }
+
+    #[test]
+    fn atomic_cond_swap_works() {
+        let key:[u64;3] = [1, 8, 4455];
+        let obj = Value::ABool(AtomicBool::new(false));
+        let op_16 = OP_ATOMIC_COND_SWAP.to_le_bytes();
+        let cmd = [op_16[0], op_16[1], VBIN_BOOL, 0, VBIN_BOOL, 1, /*Unrelated byte*/ 79];
+        let mut output = vec![];
+        let mut i = 0;
+        run_atomic_operation(&mut i, &cmd, key.as_ptr(), &obj, &mut output).expect("Unable to run atomic op success");
+        assert_eq!(i, 6);
+        assert!(obj.to_bool());
+        assert_eq!(output[0], VBIN_BOOL);
+        assert_eq!(output[1], 1); // cond swap worked
+        assert_eq!(output[2], VBIN_BOOL);
+        assert_eq!(output[3], 0); // swapped out value
+        i = 0;
+        output.clear();
+        let op2_16 = OP_ATOMIC_COND_SWAP_RELAX.to_le_bytes();
+        let cmd2 = [op2_16[0], op2_16[1], VBIN_BOOL, 0, VBIN_BOOL, 1, /*Unrelated byte*/ 91];
+        run_atomic_operation(&mut i, &cmd2, key.as_ptr(), &obj, &mut output).expect("unable to run atomic op success");
+        assert_eq!(i, 6);
+        assert!(obj.to_bool());
+        assert_eq!(output[0], VBIN_BOOL);
+        assert_eq!(output[1], 0); // cond swap failed
+        assert_eq!(output[2], VBIN_BOOL);
+        assert_eq!(output[3], 1); // currently present value
     }
 }

@@ -103,6 +103,32 @@ impl Value {
 			}
 		}
 	}
+
+    pub fn cond_swap(&self, 
+                      expected:&Value, 
+                      desired:&Value, 
+                      order:Ordering,
+                      key:*const u64) -> Result<(bool, Value), FlotonErr> {
+        match self {
+            Value::Nothing => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_NOTHING)),
+            Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
+            Value::ABool(b) => match b.compare_exchange(expected.to_bool(), desired.to_bool(), order, Ordering::Relaxed) {
+                Ok(v) => Ok((true, Value::Bool(v))),
+                Err(v) => Ok((false, Value::Bool(v)))
+            },
+            Value::UInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
+            Value::AUInt(n) => match n.compare_exchange(expected.to_uint(), desired.to_uint(), order, Ordering::Relaxed) {
+                Ok(v) => Ok((true, Value::UInt(v))),
+                Err(v) => Ok((false, Value::UInt(v)))
+            },
+            Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_IINT)),
+            Value::AIInt(n) => match n.compare_exchange(expected.to_iint(), desired.to_iint(), order, Ordering::Relaxed) {
+                Ok(v) => Ok((true, Value::IInt(v))),
+                Err(v) => Ok((false, Value::IInt(v)))
+            }
+        }
+    }
+
 }
 
 impl InPutOutPut for Value {
@@ -364,5 +390,24 @@ mod tests {
     		Ok(res) => assert!(!res),
     		Err(e) => panic!("Expected cond store to succeed but got err: {:?}", e)
     	}
+    }
+
+    #[test]
+    fn cond_swap_works() {
+        let b = Value::ABool(AtomicBool::new(true));
+        let expected = Value::Bool(true);
+        let desired = Value::Bool(false);
+        match b.cond_swap(&expected, &desired, Ordering::Release, ptr::null()) {
+            Ok(pair) => {assert!(pair.0); assert!(pair.1.to_bool());},
+            Err(e) => panic!("Expected cond store to succeed but got err: {:?}", e)
+        }
+
+        let num = Value::AUInt(AtomicU64::new(50));
+        let num_expected = Value::UInt(40);
+        let num_desired = Value::UInt(100);
+        match num.cond_swap(&num_expected, &num_desired, Ordering::Relaxed, ptr::null()) {
+            Ok(pair) => {assert!(!pair.0); assert_eq!(pair.1.to_uint(), 50);},
+            Err(e) => panic!("Expected cond store to succeed but got err: {:?}", e)
+        }
     }
 }
