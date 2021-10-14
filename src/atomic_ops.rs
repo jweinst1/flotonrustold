@@ -134,6 +134,30 @@ pub fn run_atomic_operation(place: &mut usize, cmd:&[u8], key:*const u64, data:&
                 },
                 Err(e) => Err(e)
             }
+        },
+        OP_ATOMIC_SUB => {
+            let arg = match Value::input_binary(cmd, place) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+            match data.fetch_sub(&arg, Ordering::Relaxed, key) {
+                Ok(_) => Ok(()),
+                Err(e) => Err(e)
+            }
+        },
+        OP_ATOMIC_SUB_FETCH => {
+            let arg = match Value::input_binary(cmd, place) {
+                Ok(v) => v,
+                Err(e) => return Err(e)
+            };
+            match data.fetch_sub(&arg, Ordering::Acquire, key) {
+                Ok(v) => match v {
+                    Value::UInt(n) => { out_u64(n, output); Ok(()) },
+                    Value::IInt(n) => { out_i64(n, output); Ok(()) }
+                    _ => panic!("Unexpected return type from fetch add {:?}", v)
+                },
+                Err(e) => Err(e)
+            }
         }
 		_ => Err(FlotonErr::UnexpectedByte((op_type >> 8) as u8))
 	}
@@ -255,6 +279,24 @@ mod tests {
         run_atomic_operation(&mut i, &cmd, key.as_ptr(), &obj, &mut output).expect("Unable to run atomic op success");
         assert_eq!(i, 11);
         assert_eq!(obj.to_uint(), 4);
+        assert_eq!(output.len(), 0);
+    }
+
+    #[test]
+    fn atomic_sub_works() {
+        let key:[u64;3] = [1, 8, 4455];
+        let obj = Value::AUInt(AtomicU64::new(4));
+        let arg_num:u64 = 3;
+        let arg_bytes = arg_num.to_le_bytes();
+        let op_16 = OP_ATOMIC_SUB.to_le_bytes();
+        let cmd = [op_16[0], op_16[1], VBIN_UINT, arg_bytes[0], arg_bytes[1], arg_bytes[2],
+                                                  arg_bytes[3], arg_bytes[4], arg_bytes[5],
+                                                  arg_bytes[6], arg_bytes[7], /*Unrelated byte*/ 79];
+        let mut output = vec![];
+        let mut i = 0;
+        run_atomic_operation(&mut i, &cmd, key.as_ptr(), &obj, &mut output).expect("Unable to run atomic op success");
+        assert_eq!(i, 11);
+        assert_eq!(obj.to_uint(), 1);
         assert_eq!(output.len(), 0);
     }
 }
