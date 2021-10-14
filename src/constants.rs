@@ -32,6 +32,10 @@ pub const OP_ATOMIC_COND_STORE:u16 = 4;
 pub const OP_ATOMIC_COND_STORE_RELAX:u16 = 5;
 pub const OP_ATOMIC_COND_SWAP:u16 = 6;
 pub const OP_ATOMIC_COND_SWAP_RELAX:u16 = 7;
+pub const OP_ATOMIC_ADD:u16 = 8;
+pub const OP_ATOMIC_ADD_FETCH:u16 = 9;
+pub const OP_ATOMIC_SUB:u16 = 10;
+pub const OP_ATOMIC_SUB_FETCH:u16 = 11;
 
 //errors
 pub const ERR_DATE_TIME:u8 = 0;

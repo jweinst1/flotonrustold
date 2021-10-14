@@ -108,7 +108,7 @@ impl<T: Debug> Container<T> {
     pub fn value(&self) -> Result<&T, u8> {
         match self {
             Container::Val(v) => Ok(&v),
-            Container::Map(m) => Err(VBIN_CMAP_BEGIN)
+            Container::Map(_) => Err(VBIN_CMAP_BEGIN)
         }
     }
 

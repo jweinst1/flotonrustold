@@ -55,6 +55,18 @@ impl Value {
 		}
 	}
 
+    pub fn fetch_add(&self, other:&Value, order:Ordering, key:*const u64) -> Result<Value, FlotonErr> {
+        match self {
+            Value::Nothing => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_NOTHING)),
+            Value::AUInt(n) => Ok(Value::UInt(n.fetch_add(other.to_uint(), order))),
+            Value::AIInt(n) => Ok(Value::IInt(n.fetch_add(other.to_iint(), order))),
+            Value::UInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
+            Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
+            Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
+            Value::ABool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)) // todo fix to proper error
+        }
+    }
+
 	pub fn store(&self, other:&Value, order:Ordering, key:*const u64) -> Result<(), FlotonErr> {
 		match self {
 			Value::Nothing => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_NOTHING)),
@@ -409,5 +421,15 @@ mod tests {
             Ok(pair) => {assert!(!pair.0); assert_eq!(pair.1.to_uint(), 50);},
             Err(e) => panic!("Expected cond store to succeed but got err: {:?}", e)
         }
+    }
+
+    #[test]
+    fn fetch_add_works() {
+        let num = Value::AUInt(AtomicU64::new(0));
+        for _ in 0..5 {
+            let arg = Value::UInt(1);
+            num.fetch_add(&arg, Ordering::Relaxed, ptr::null()).expect("fetch add failed");
+        }
+        assert_eq!(num.to_uint(), 5);
     }
 }

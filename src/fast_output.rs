@@ -19,6 +19,12 @@ pub fn out_u64(val:u64, out:&mut Vec<u8>) {
 	out.extend_from_slice(&val.to_le_bytes());
 }
 
+#[inline]
+pub fn out_i64(val:i64, out:&mut Vec<u8>) {
+    out.push(VBIN_IINT);
+    out.extend_from_slice(&val.to_le_bytes());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -36,10 +42,18 @@ mod tests {
     }
 
     #[test]
-    fn out_64_works() {
+    fn out_u64_works() {
     	let mut output = Vec::<u8>::new();
     	out_u64(40, &mut output);
     	assert_eq!(output[0], VBIN_UINT);
     	unsafe { assert_eq!(40, u64::from_le_bytes(output[1..9].try_into().expect("Could not convert slice to byte array"))); }
+    }
+
+    #[test]
+    fn out_i64_works() {
+        let mut output = Vec::<u8>::new();
+        out_i64(40, &mut output);
+        assert_eq!(output[0], VBIN_IINT);
+        unsafe { assert_eq!(40, i64::from_le_bytes(output[1..9].try_into().expect("Could not convert slice to byte array"))); }
     }
 }

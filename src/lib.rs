@@ -1,5 +1,6 @@
 #![allow(dead_code)]
 #![allow(unused_macros)]
+#![allow(unused_imports)]
 pub mod constants;
 pub mod traits;
 #[macro_use] pub mod macros;
