@@ -13,7 +13,8 @@ pub enum FlotonErr {
 	DateTime,
 	ReturnNotFound(*const u64),
 	UnexpectedByte(u8),
-	TypeNotAtomic(*const u64, u8)
+	TypeNotAtomic(*const u64, u8),
+    OperationNoSupport(*const u64, u8, u16)
 }
 
 impl InPutOutPut for FlotonErr {
@@ -34,7 +35,13 @@ impl InPutOutPut for FlotonErr {
 				output.push(ERR_TYPE_NOT_ATOMIC);
 				output.push(*t);
 				keys::key_u64_out_vu8(*key, output);
-			}
+			},
+            FlotonErr::OperationNoSupport(key, t, o) => {
+                output.push(ERR_OPER_NOT_SUPPORTED);
+                output.push(*t);
+                output.extend_from_slice(&o.to_le_bytes());
+                keys::key_u64_out_vu8(*key, output);
+            }
 		}
 	}
 
@@ -62,7 +69,17 @@ impl InPutOutPut for FlotonErr {
 					let parsed = FlotonErr::TypeNotAtomic(parsed_ptr, val_type);
 					*place += keys::key_u64_len(parsed_ptr);
 					return Ok(parsed);
-				}
+				},
+                ERR_OPER_NOT_SUPPORTED => {
+                    let val_type = input[*place];
+                    *place += 1;
+                    let op_bytes = [input[*place], input[*place + 1]];
+                    *place += 2;
+                    let parsed_ptr = unsafe { input.as_ptr().offset(*place as isize) as *const u64 };
+                    let parsed = FlotonErr::OperationNoSupport(parsed_ptr, val_type, u16::from_le_bytes(op_bytes));
+                    *place += keys::key_u64_len(parsed_ptr);
+                    return Ok(parsed);
+                }
 				_ => return Err(FlotonErr::UnexpectedByte(err_type))
 			}
 		} else {
@@ -181,5 +198,40 @@ mod tests {
     		},
     		_ => panic!("Expected type not atomic error, but got different error {:?}", err_obj)
     	}
+    }
+
+    #[test]
+    fn err_type_no_support_op_works() {
+        let mut err_data = Vec::<u8>::new();
+        err_data.push(VBIN_ERROR);
+        err_data.push(ERR_OPER_NOT_SUPPORTED);
+        err_data.push(VBIN_BOOL);
+        err_data.extend_from_slice(&OP_ATOMIC_ADD.to_le_bytes());
+
+        let key_depth:u64 = 2;
+        let key_length:u64 = 8;
+        let key_1:u64 = 7744;
+        let key_2:u64 = 9922;
+        err_data.extend_from_slice(&key_depth.to_le_bytes());
+        err_data.extend_from_slice(&key_length.to_le_bytes());
+        err_data.extend_from_slice(&key_1.to_le_bytes());
+        err_data.extend_from_slice(&key_length.to_le_bytes());
+        err_data.extend_from_slice(&key_2.to_le_bytes());
+
+        let mut i = 0;
+        let err_obj = FlotonErr::input_binary(err_data.as_slice(), &mut i).expect("Cannot parse the error from bytes");
+        assert_eq!(i, 45);
+        match err_obj {
+            FlotonErr::OperationNoSupport(ptr, t, o) => unsafe {
+                assert_eq!(t, VBIN_BOOL);
+                assert_eq!(o, OP_ATOMIC_ADD);
+                assert_eq!(*ptr, 2);
+                assert_eq!(*(ptr.offset(1)), 8);
+                assert_eq!(*(ptr.offset(2)), 7744);
+                assert_eq!(*(ptr.offset(3)), 8);
+                assert_eq!(*(ptr.offset(4)), 9922);
+            },
+            _ => panic!("Expected type operation not supported, but got different error {:?}", err_obj)
+        }
     }
 }

@@ -78,8 +78,8 @@ fn compare_aligned(lfs:&[u8], rfs:&[u8], align:usize) -> bool {
 			if lfs.len() != rfs.len() {
 				return false;
 			} else {
-				let mut lptr = lfs.as_ptr();
-				let mut rptr = rfs.as_ptr();
+				let lptr = lfs.as_ptr();
+				let rptr = rfs.as_ptr();
 				for i in 0..lfs.len() {
 					unsafe {
 						if *lptr.offset(i as isize) != *rptr.offset(i as isize) {

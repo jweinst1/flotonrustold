@@ -19,6 +19,7 @@ pub mod hashtree;
 pub mod shared;
 pub mod containers;
 pub mod atomic_ops;
+pub mod normal_ops;
 pub mod processors;
 pub mod threading;
 pub mod ports;

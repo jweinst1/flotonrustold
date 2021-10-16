@@ -135,6 +135,10 @@ impl<T> Shared<T> {
         made.cur_ptr.store(TimePtr::make(val), Ordering::SeqCst);
         made
     }
+
+    pub fn is_empty(&self) -> bool {
+        isnull!(self.cur_ptr.load(Ordering::SeqCst))
+    }
     
     pub fn time_check(&self, ctime:u64) -> bool {
         // Checks if all threads have advanced past some time, allowing safe freeing.

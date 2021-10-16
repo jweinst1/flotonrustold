@@ -61,9 +61,9 @@ impl Value {
             Value::AUInt(n) => Ok(Value::UInt(n.fetch_add(other.to_uint(), order))),
             Value::AIInt(n) => Ok(Value::IInt(n.fetch_add(other.to_iint(), order))),
             Value::UInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
-            Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
-            Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
-            Value::ABool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)) // todo fix to proper error
+            Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_IINT)),
+            Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
+            Value::ABool(_) => Err(FlotonErr::OperationNoSupport(key, constants::VBIN_ABOOL, constants::OP_ATOMIC_ADD))
         }
     }
 
@@ -73,9 +73,9 @@ impl Value {
             Value::AUInt(n) => Ok(Value::UInt(n.fetch_sub(other.to_uint(), order))),
             Value::AIInt(n) => Ok(Value::IInt(n.fetch_sub(other.to_iint(), order))),
             Value::UInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
-            Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
-            Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)),
-            Value::ABool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_UINT)) // todo fix to proper error
+            Value::IInt(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_IINT)),
+            Value::Bool(_) => Err(FlotonErr::TypeNotAtomic(key, constants::VBIN_BOOL)),
+            Value::ABool(_) => Err(FlotonErr::OperationNoSupport(key, constants::VBIN_ABOOL, constants::OP_ATOMIC_SUB))
         }
     }
 

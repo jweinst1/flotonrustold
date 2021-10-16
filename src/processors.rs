@@ -1,6 +1,7 @@
 use std::ptr;
 use std::sync::atomic::Ordering;
 use crate::atomic_ops::run_atomic_operation;
+use crate::normal_ops::run_normal_operation;
 use crate::constants;
 use crate::values::Value;
 use crate::tlocal;
@@ -18,7 +19,8 @@ use std::io::prelude::*;
 #[derive(Debug)]
 enum KeyAction {
     Return,
-    AtomicOp
+    AtomicOp,
+    NormalOp
 }
 
 fn run_key_action(action:KeyAction, place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
@@ -79,6 +81,21 @@ fn run_key_action(action:KeyAction, place: &mut usize, cmd:&[u8], data:&Containe
                             },
                             Err(b) => Err(FlotonErr::TypeNotAtomic(key_orig, b))
                         }
+                    },
+                    None => { 
+                        *place += key_len;
+                        Err(FlotonErr::ReturnNotFound(key_orig)) 
+                    }
+                };
+            },
+            KeyAction::NormalOp => {
+                let key_len = (unsafe { *key_ptr }) as usize; // todo align error
+                key_ptr = unsafe { key_ptr.offset(1) };
+                *place += 8;
+                return match (*cur_map).get_map_shared(&cmd[*place..(*place + key_len)]) {
+                    Some(inner_shared) => {
+                        *place += key_len;
+                        run_normal_operation(place, cmd, key_orig, inner_shared, output)
                     },
                     None => { 
                         key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
