@@ -6,6 +6,7 @@ pub const CMD_STOP:u8 = 0;
 pub const CMD_RETURN_KV:u8 = 1;
 pub const CMD_SET_KV:u8 = 2;
 pub const CMD_OP_ATOMIC:u8 = 3;
+pub const CMD_OP_NORMAL:u8 = 4;
 
 //data types
 pub const VBIN_NOTHING:u8 = 0;
@@ -36,6 +37,9 @@ pub const OP_ATOMIC_ADD:u16 = 8;
 pub const OP_ATOMIC_ADD_FETCH:u16 = 9;
 pub const OP_ATOMIC_SUB:u16 = 10;
 pub const OP_ATOMIC_SUB_FETCH:u16 = 11;
+
+// normal ops
+pub const OP_NORM_UPDATE:u16 = 0;
 
 //errors
 pub const ERR_DATE_TIME:u8 = 0;

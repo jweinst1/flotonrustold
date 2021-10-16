@@ -95,7 +95,11 @@ fn run_key_action(action:KeyAction, place: &mut usize, cmd:&[u8], data:&Containe
                 return match (*cur_map).get_map_shared(&cmd[*place..(*place + key_len)]) {
                     Some(inner_shared) => {
                         *place += key_len;
-                        run_normal_operation(place, cmd, key_orig, inner_shared, output)
+                        if inner_shared.is_empty() {
+                            Err(FlotonErr::ReturnNotFound(key_orig)) 
+                        } else {
+                            run_normal_operation(place, cmd, key_orig, inner_shared, output)
+                        }
                     },
                     None => { 
                         key_ptr = unsafe { key_ptr.offset((key_len / 8) as isize) };
@@ -120,6 +124,10 @@ fn run_cmd_op_atomic(place: &mut usize, cmd:&[u8], data:&Container<Value>, outpu
 
 fn run_cmd_returnkv(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
     run_key_action(KeyAction::Return, place, cmd, data, output)
+}
+
+fn run_cmd_op_normal(place: &mut usize, cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) -> Result<(), FlotonErr> {
+    run_key_action(KeyAction::NormalOp, place, cmd, data, output)
 }
 
 fn run_cmd_setkv(place: &mut usize, cmd:&[u8], data:&Container<Value>) -> Result<(), FlotonErr> {
@@ -179,6 +187,13 @@ pub fn run_cmd(cmd:&[u8], data:&Container<Value>, output:&mut Vec<u8>) {
             constants::CMD_OP_ATOMIC => {
                 i += 1;
                 match run_cmd_op_atomic(&mut i, cmd, data, output) {
+                    Err(e) => e.output_binary(output),
+                    Ok(_) => ()
+                }
+            },
+            constants::CMD_OP_NORMAL => {
+                i += 1;
+                match run_cmd_op_normal(&mut i, cmd, data, output) {
                     Err(e) => e.output_binary(output),
                     Ok(_) => ()
                 }
