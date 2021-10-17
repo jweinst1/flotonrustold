@@ -10,6 +10,11 @@ impl<T: Clone> CircleNode<T> {
 		alloc!(CircleNode(val.clone(), newptr!()))
 	}
 
+	#[inline]
+	fn extend_ptr(val:&T, next: *mut CircleNode<T>) -> *mut CircleNode<T> {
+		alloc!(CircleNode(val.clone(), AtomicPtr::new(next)))
+	}
+
 	pub fn make_ring(val:&T, count:usize) -> *mut CircleNode<T> {
 		assert!(count >= 2);
 		let base = CircleNode::new_ptr(val);
@@ -43,6 +48,12 @@ impl<T: Clone> CircleList<T> {
 			self.0.store(rcur.1.load(Ordering::SeqCst), Ordering::SeqCst);
 			return &rcur.0;
 		}
+	}
+
+	pub fn add(&self, val:&T) {
+		let head =  unsafe { self.0.load(Ordering::SeqCst).as_ref().unwrap() };
+		let head_next = head.1.load(Ordering::SeqCst);
+		head.1.store(CircleNode::extend_ptr(val, head_next), Ordering::SeqCst);
 	}
 
 	pub fn next_ptr(&self) -> *mut CircleNode<T> {

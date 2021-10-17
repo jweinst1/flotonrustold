@@ -156,6 +156,7 @@ pub struct ExecUnit<T> {
 impl<T: 'static> Clone for ExecUnit<T> {
     // Only clones queue size and function, does not copy the thread or current jobs
     fn clone(&self) -> Self {
+        // new is hidden inside of clone to not clone the thread handle or queue
         ExecUnit::<T>::new(self.queue.size, self.func)
     }
 }
@@ -211,14 +212,21 @@ impl<T: 'static> ExecUnit<T> {
 
 #[derive(Debug)]
 pub struct ExecUnitGroup<T> {
-    members:CircleList<ExecUnit<T>>
+    members:CircleList<ExecUnit<T>>,
+    template:ExecUnit<T>
 }
 
 impl<T: 'static> ExecUnitGroup<T> {
     pub fn new(start_size:usize, qsize:usize, func:fn(*mut T)) -> ExecUnitGroup<T> {
         // Trick to form a clonable unit, but not start a thread for it
         let template = ExecUnit{handle:None, switch:Switch::new(), queue:TVal::new(SpSc{head:newptr!(), tail:newptr!(), size:qsize}), func:func};
-        ExecUnitGroup{members:CircleList::new(&template, start_size)}
+        ExecUnitGroup{members:CircleList::new(&template, start_size), template:template}
+    }
+
+    pub fn increase_members(&self, amount:usize) {
+        for _ in 0..amount {
+            self.members.add(&self.template);
+        }
     }
 
     pub fn assign_ptr(&self, ptr:*mut T) -> Option<usize> { // todo distribution
