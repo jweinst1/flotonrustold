@@ -102,7 +102,7 @@ impl<T: 'static> TcpServer<T> {
 					Ok((_socket, client_addr)) => {
 						log_trace!(Tcp, "Got connection from {}", client_addr);
 						let req = alloc!(TcpServerStream(_socket, tcontext.clone()));
-						match egroup.assign_retried(req, 10, Duration::from_millis(100)) {
+						match egroup.assign_retried(req, 10) {
 							None => {
 								// can't handle it
 								log_warn!(Tcp, "Too busy to handle connection from {}", client_addr);

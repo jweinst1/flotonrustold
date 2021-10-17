@@ -101,4 +101,18 @@ mod tests {
     	}
     	assert_eq!(list.next().0, 1);
     }
+
+    #[test]
+    fn circ_list_add_works() {
+    	let base = TestType(7);
+    	let list = CircleList::new(&base, 10);
+    	unsafe {
+    		(*list.0.load(Ordering::SeqCst)).0 = TestType(1);
+    	}
+    	list.add(&base);
+    	for _ in 0..11 {
+    		list.next();
+    	}
+    	assert_eq!(list.next().0, 1);	
+    }
 }

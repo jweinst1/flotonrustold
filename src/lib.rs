@@ -7,6 +7,7 @@ pub mod traits;
 pub mod datetime;
 #[macro_use] pub mod logging;
 pub mod errors;
+pub mod auto_scale;
 pub mod db_args;
 pub mod signals;
 pub mod fast_output;

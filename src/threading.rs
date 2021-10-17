@@ -5,6 +5,7 @@ use std::thread::JoinHandle;
 use std::sync::Arc;
 use std::ops::Deref;
 use crate::circular::CircleList;
+use crate::auto_scale::AutoScalePolicy;
 use crate::traits::*;
 
 #[derive(Debug)]
@@ -213,14 +214,15 @@ impl<T: 'static> ExecUnit<T> {
 #[derive(Debug)]
 pub struct ExecUnitGroup<T> {
     members:CircleList<ExecUnit<T>>,
-    template:ExecUnit<T>
+    template:ExecUnit<T>,
+    policy:AutoScalePolicy
 }
 
 impl<T: 'static> ExecUnitGroup<T> {
     pub fn new(start_size:usize, qsize:usize, func:fn(*mut T)) -> ExecUnitGroup<T> {
         // Trick to form a clonable unit, but not start a thread for it
         let template = ExecUnit{handle:None, switch:Switch::new(), queue:TVal::new(SpSc{head:newptr!(), tail:newptr!(), size:qsize}), func:func};
-        ExecUnitGroup{members:CircleList::new(&template, start_size), template:template}
+        ExecUnitGroup{members:CircleList::new(&template, start_size), template:template, policy:AutoScalePolicy::WhenAllFull(1)}
     }
 
     pub fn increase_members(&self, amount:usize) {
@@ -238,11 +240,16 @@ impl<T: 'static> ExecUnitGroup<T> {
         return None;
     }
 
-    pub fn assign_retried(&self, ptr:*mut T, times:usize, pause:Duration) -> Option<usize> {
+    pub fn assign_retried(&self, ptr:*mut T, times:usize) -> Option<usize> {
         for _ in 0..times {
             match self.assign_ptr(ptr) {
                 Some(n) => return Some(n),
-                None => thread::park_timeout(pause)
+                None => {
+                    // Full, Activate auto scaling
+                    match self.policy {
+                        AutoScalePolicy::WhenAllFull(amnt) => self.increase_members(amnt)
+                    }
+                }
             }
         }
         return None;
@@ -450,11 +457,11 @@ mod tests {
         let mut egroup = ExecUnitGroup::new(3, 3, sample_exec_func);
         let num = alloc!(30);
         let num2 = alloc!(15);
-        match egroup.assign_retried(num, 5, Duration::from_millis(100)) {
+        match egroup.assign_retried(num, 5) {
             Some(n) => assert_eq!(n, 0),
             None => panic!("Expected group {:?} to have an empty queue", egroup)
         }
-        match egroup.assign_retried(num2, 5, Duration::from_millis(100)) {
+        match egroup.assign_retried(num2, 5) {
             Some(n) => assert_eq!(n, 0),
             None => panic!("Expected group {:?} to have an empty queue", egroup)
         }
